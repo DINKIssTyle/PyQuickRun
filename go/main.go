@@ -14,7 +14,6 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
-	// "fyne.io/fyne/v2/storage" <- 사용하지 않아 에러 발생하므로 삭제함
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -33,22 +32,17 @@ func main() {
 	defaultPython := prefs.StringWithFallback("pythonPath", "/usr/bin/python3")
 
 	// --- UI 컴포넌트 ---
-
-	// 상태 메시지
 	statusLabel := widget.NewLabel("Ready to run.")
 	statusLabel.Alignment = fyne.TextAlignCenter
 
-	// 파이썬 경로 입력
 	pathEntry := widget.NewEntry()
 	pathEntry.SetText(defaultPython)
 	pathEntry.PlaceHolder = "/usr/bin/python3"
 
-	// 경로 저장 로직
 	pathEntry.OnChanged = func(s string) {
 		prefs.SetString("pythonPath", s)
 	}
 
-	// 파일 찾기 버튼
 	browseBtn := widget.NewButtonWithIcon("Browse", theme.FolderOpenIcon(), func() {
 		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if err == nil && reader != nil {
@@ -58,7 +52,6 @@ func main() {
 		fileDialog.Show()
 	})
 
-	// 옵션 체크박스
 	chkTerminal := widget.NewCheck("Run in Terminal window", func(b bool) {
 		prefs.SetBool("useTerminal", b)
 	})
@@ -76,7 +69,7 @@ func main() {
 		closeWin := chkClose.Checked
 		workDir := filepath.Dir(scriptPath)
 
-		// 헤더 파싱 (#pqr linux terminal 등)
+		// 헤더 파싱
 		if file, err := os.Open(scriptPath); err == nil {
 			scanner := bufio.NewScanner(file)
 			for i := 0; i < 20 && scanner.Scan(); i++ {
@@ -94,7 +87,6 @@ func main() {
 		statusLabel.SetText("Running: " + filepath.Base(scriptPath))
 
 		if useTerm {
-			// 터미널 실행 (gnome-terminal 등 감지)
 			cmdStr := fmt.Sprintf("cd '%s' && '%s' '%s'; echo; echo 'Exit Code: $?'; read -p 'Press Enter to exit...'", workDir, pythonBin, scriptPath)
 
 			terminals := [][]string{
@@ -122,7 +114,6 @@ func main() {
 			}
 
 		} else {
-			// 백그라운드 실행
 			cmd := exec.Command(pythonBin, scriptPath)
 			cmd.Dir = workDir
 			output, err := cmd.CombinedOutput()
@@ -130,18 +121,20 @@ func main() {
 			if err == nil {
 				statusLabel.SetText("Success (Exit Code 0)")
 				if closeWin {
-					time.Sleep(time.Second)
-					w.Close()
+					// 성공 시 1초 뒤 종료
+					go func() {
+						time.Sleep(time.Second)
+						w.Close()
+					}()
 				}
 			} else {
 				statusLabel.SetText("Failed: " + err.Error())
-				// 에러 내용을 다이얼로그로 표시
 				dialog.ShowInformation("Execution Error", string(output), w)
 			}
 		}
 	}
 
-	// --- 드래그 앤 드롭 영역 (Custom Widget) ---
+	// --- 드래그 앤 드롭 ---
 	w.SetOnDropped(func(pos fyne.Position, uris []fyne.URI) {
 		if len(uris) > 0 {
 			path := uris[0].Path()
@@ -153,7 +146,6 @@ func main() {
 		}
 	})
 
-	// 드래그 안내 UI 구성 (수정됨: 최신 아이콘 사용)
 	dropIcon := widget.NewIcon(theme.UploadIcon()) 
 	dropText := widget.NewLabel("Drag & Drop .py file here\n(or Drop anywhere in window)")
 	dropText.Alignment = fyne.TextAlignCenter
@@ -165,32 +157,43 @@ func main() {
 		layout.NewSpacer(),
 	)
 
-	// 카드 스타일 배경 프레임
-	cardFrame := container.NewPadded(
-		container.NewPadded(dropZone),
-	)
+	cardFrame := container.NewPadded(container.NewPadded(dropZone))
 
-	// --- 전체 레이아웃 조립 ---
+	// --- 레이아웃 조립 ---
 	content := container.NewVBox(
 		widget.NewLabelWithStyle(AppName, fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
 		widget.NewSeparator(),
-
 		widget.NewLabel("Interpreter Path:"),
 		container.NewBorder(nil, nil, nil, browseBtn, pathEntry),
-
 		chkTerminal,
 		chkClose,
-
 		layout.NewSpacer(),
 		widget.NewCard("", "", cardFrame),
 		layout.NewSpacer(),
-
 		widget.NewSeparator(),
 		statusLabel,
-		// 수정됨: TextAlignTrailing (오른쪽 정렬) 사용
 		widget.NewLabelWithStyle("© 2025 DINKIssTyle", fyne.TextAlignTrailing, fyne.TextStyle{Italic: true}),
 	)
 
 	w.SetContent(container.NewPadded(content))
+
+	// ==========================================
+	// [추가된 핵심 로직] 더블 클릭(인자값) 처리
+	// ==========================================
+	if len(os.Args) > 1 {
+		argPath := os.Args[1]
+		// 파일이 실제 존재하고 .py 인지 확인
+		if _, err := os.Stat(argPath); err == nil {
+			if strings.HasSuffix(strings.ToLower(argPath), ".py") {
+				// UI가 완전히 뜬 뒤 실행하기 위해 고루틴(별도 쓰레드) 사용
+				go func() {
+					// 0.2초 정도 대기 (UI 렌더링 확보)
+					time.Sleep(200 * time.Millisecond)
+					runScript(argPath)
+				}()
+			}
+		}
+	}
+
 	w.ShowAndRun()
 }
