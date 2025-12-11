@@ -24,22 +24,20 @@ Magic comments must appear within the **first 20 lines** of the script.
 
 The launcher automatically selects the correct interpreter based on the OS.
 
-```python
-#pqr mac ~/pythons/project_a/.venv/bin/python
-#pqr win C:\Users\dinki\pythons\project_a\venv\Scripts\python.exe
-#pqr linux /home/dinki/pythons/project_a/venv/bin/python
+**#pqr mac** ~/pythons/project_a/.venv/bin/python  
+**#pqr win** C:\Users\dinki\pythons\project_a\venv\Scripts\python.exe  
+**#pqr linux** /home/dinki/pythons/project_a/venv/bin/python  
 
 import sys
-print("Running with project_a environment!")
-```
+.
+.
+
 
 ### **2. Force Terminal Execution**
 
 Useful for scripts that require input() or TUI applications.
 
-```
-#pqr mac terminal ~/pythons/default/.venv/bin/python
-```
+#pqr mac **terminal** ~/pythons/default/.venv/bin/python
 
 ### 🔧 Behavior Logic
 	1.	Priority: #pqr magic comments override global launcher settings.
