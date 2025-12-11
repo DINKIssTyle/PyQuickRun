@@ -11,7 +11,6 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using Microsoft.Win32;
 
-// [중요] 프로젝트 이름에 맞게 수정됨
 namespace PyQuickRun
 {
     public partial class MainWindow : Window
@@ -20,11 +19,30 @@ namespace PyQuickRun
         {
             InitializeComponent();
             LoadSettings();
+
+            // [추가된 부분 1] 앱이 화면에 다 그려진 뒤에 "파일을 들고 왔는지" 검사
+            this.Loaded += MainWindow_Loaded;
+        }
+
+        // [추가된 부분 2] 실행 시 전달된 파일(더블클릭/Open With) 처리
+        private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+        {
+            string[] args = Environment.GetCommandLineArgs();
+
+            // args[0]은 실행파일 자체의 경로이고, args[1]부터가 실제 전달된 파일입니다.
+            if (args.Length > 1)
+            {
+                string filePath = args[1];
+                if (File.Exists(filePath) && Path.GetExtension(filePath).ToLower() == ".py")
+                {
+                    // 파일을 받았다면 즉시 실행
+                    ExecuteScript(filePath);
+                }
+            }
         }
 
         private void LoadSettings()
         {
-            // 이제 PyQuickRun 프로젝트 안의 Properties를 정상적으로 찾을 것입니다.
             string savedPath = Properties.Settings.Default.PythonPath;
             if (string.IsNullOrWhiteSpace(savedPath)) savedPath = "python";
 
