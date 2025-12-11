@@ -2,6 +2,8 @@
 
 A launcher that makes it easy to run Python scripts using predefined environments — including different operating systems, interpreters, and virtual environments.
 
+![Image](assets/PyQucikRun_Main.png)
+
 ---
 
 ## 🚀 Per-Script Configuration (Magic Comments)
