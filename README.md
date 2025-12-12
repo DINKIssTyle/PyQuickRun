@@ -2,7 +2,11 @@
 
 A launcher that makes it easy to run Python scripts using predefined environments — including different operating systems, interpreters, and virtual environments.
 
-![Image](assets/PyQucikRun_Main.png)
+<div align="center">
+  <img src="assets/PyQucikRun_Main.png" alt="Main Image" width="600" />
+  <br/> <br/> 
+  <img src="assets/PyQuickRun.gif" alt="Demo GIF" width="600" />
+</div>
 
 ---
 
