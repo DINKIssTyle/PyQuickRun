@@ -68,13 +68,13 @@
       "size" : "256x256"
     },
     {
-      "filename" : "PyRunner_512.png",
+      "filename" : "PyQuickRun_512.png",
       "idiom" : "mac",
       "scale" : "1x",
       "size" : "512x512"
     },
     {
-      "filename" : "PyRunner_1024png.png",
+      "filename" : "PyQuickRun.png",
       "idiom" : "mac",
       "scale" : "2x",
       "size" : "512x512"
