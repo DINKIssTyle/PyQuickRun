@@ -170,36 +170,56 @@ struct ContentView: View {
         return (path as NSString).expandingTildeInPath
     }
     
-    // [NEW] 헤더 파싱 (경로 + 터미널 강제 여부)
-    // 반환값: (경로, 터미널강제여부)?
-    func scanPqrHeader(url: URL) -> (String, Bool)? {
+    // [UPDATED] 헤더 파싱: 키-값 포맷 지원
+    // 형식: #pqr cat=Tool; mac=/path/to/python; win=...; linux=...; term=false
+    // 반환값: (인터프리터경로, 터미널강제옵션(있을때만), 카테고리)
+    func scanPqrHeader(url: URL) -> (interpreter: String?, terminalOverride: Bool?, category: String?) {
         do {
             let content = try String(contentsOf: url, encoding: .utf8)
             let lines = content.components(separatedBy: .newlines)
-            
+
             // 상단 20줄만 검사
             for line in lines.prefix(20) {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
-                
-                if trimmed.hasPrefix("#pqr mac") {
-                    // "#pqr mac" 제거 후 남은 문자열
-                    var remainder = trimmed.dropFirst("#pqr mac".count).trimmingCharacters(in: .whitespaces)
-                    var forceTerminal = false
-                    
-                    // "terminal" 키워드 확인 (대소문자 무시)
-                    if remainder.lowercased().hasPrefix("terminal") {
-                        forceTerminal = true
-                        // "terminal" 제거 후 남은 것이 진짜 경로
-                        remainder = remainder.dropFirst("terminal".count).trimmingCharacters(in: .whitespaces)
+                guard trimmed.lowercased().hasPrefix("#pqr") else { continue }
+
+                // '#pqr' 이후 부분만 추출
+                var remainder = trimmed.dropFirst(4) // remove '#pqr'
+                // 앞 공백과 콜론/대시 등 제거
+                remainder = Substring(remainder.trimmingCharacters(in: .whitespacesAndNewlines))
+
+                // 세미콜론으로 분리된 key=value 쌍 파싱
+                let pairs = remainder.split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }
+
+                var dict: [String: String] = [:]
+                for pair in pairs {
+                    let parts = pair.split(separator: "=", maxSplits: 1).map { String($0).trimmingCharacters(in: .whitespaces) }
+                    if parts.count == 2, !parts[0].isEmpty {
+                        dict[parts[0].lowercased()] = parts[1]
                     }
-                    
-                    return (remainder, forceTerminal)
                 }
+
+                // 키 추출
+                let category = dict["cat"]
+                let macPath = dict["mac"]
+                let termString = dict["term"]?.lowercased()
+
+                var terminalOverride: Bool? = nil
+                if let termString = termString {
+                    if ["true", "1", "yes", "y"].contains(termString) {
+                        terminalOverride = true
+                    } else if ["false", "0", "no", "n"].contains(termString) {
+                        terminalOverride = false
+                    }
+                }
+
+                // 현재는 macOS 전용이므로 mac 키를 우선 사용
+                return (interpreter: macPath, terminalOverride: terminalOverride, category: category)
             }
         } catch {
             print("Header scan failed: \(error)")
         }
-        return nil
+        return (nil, nil, nil)
     }
 
     func executeScript(url: URL) {
@@ -210,19 +230,19 @@ struct ContentView: View {
         // 기본적으로는 체크박스 설정을 따름
         var shouldRunInTerminal = useTerminal
         
-        // 1. 헤더 스캔
-        if let (customPath, forceTerminal) = scanPqrHeader(url: url) {
+        // 1. 헤더 스캔 (새 포맷)
+        let header = scanPqrHeader(url: url)
+        if let customPath = header.interpreter, !customPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             let resolvedCustom = resolvePath(customPath)
             if !resolvedCustom.isEmpty {
                 finalInterpreter = resolvedCustom
                 print("Custom interpreter: \(finalInterpreter)")
             }
-            
-            // [중요] 헤더에 terminal이 있으면 체크박스 무시하고 강제 True
-            if forceTerminal {
-                shouldRunInTerminal = true
-                print("Force terminal mode active")
-            }
+        }
+        // term이 명시되면 체크박스 무시하고 강제 적용
+        if let termOverride = header.terminalOverride {
+            shouldRunInTerminal = termOverride
+            print("Terminal override from header: \(termOverride)")
         }
         
         // 경로 검증
