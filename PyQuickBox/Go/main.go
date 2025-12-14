@@ -50,6 +50,12 @@ const (
 	KeyThemeMode         = "ThemeMode" // "dark", "light", "system"
 )
 
+const (
+	AppName      = "PyQuickBox"
+	AppVersion   = "1.0.0"
+	AppCopyright = "© 2025 DINKI'ssTyle"
+)
+
 // --- 메인 구조체 ---
 type LauncherApp struct {
 	App        fyne.App
@@ -94,7 +100,7 @@ func main() {
 	os.Setenv("FYNE_SCALE", fmt.Sprintf("%f", uiScale))
 
 	myApp.SetIcon(resourceIconPng)
-	myWindow := myApp.NewWindow("PyQuickBox v1.0.0")
+	myWindow := myApp.NewWindow(AppName)
 
 	launcher := &LauncherApp{
 		App:      myApp,
@@ -112,15 +118,15 @@ func main() {
 	// --- File Association & Open Handling ---
 	// macOS "Open With" / Docker Drag
 	/*
-	if desk, ok := myApp.(desktop.App); ok {
-		desk.SetOnOpened(func(uc fyne.URIReadCloser) {
-			if uc == nil {
-				return
-			}
-			path := uc.URI().Path()
-			launcher.runScriptFromPath(path)
-		})
-	}
+		if desk, ok := myApp.(desktop.App); ok {
+			desk.SetOnOpened(func(uc fyne.URIReadCloser) {
+				if uc == nil {
+					return
+				}
+				path := uc.URI().Path()
+				launcher.runScriptFromPath(path)
+			})
+		}
 	*/
 
 	// 2. 파일 감지기 시작
@@ -135,10 +141,10 @@ func main() {
 
 	// 4. 초기 스캔
 	launcher.refreshScripts()
-	
+
 	// Process CLI args (Windows/Linux)
 	if len(os.Args) > 1 {
-		// execute in goroutine to allow UI execution? 
+		// execute in goroutine to allow UI execution?
 		// Actually runScriptFromPath uses exec.Command which is mostly async or blocking?
 		// runScript returns *exec.Cmd, it starts it.
 		// Let's iterate args.
@@ -814,7 +820,7 @@ func (l *LauncherApp) openFileLocationLinux(dir string) {
 func (l *LauncherApp) runScriptFromPath(path string) {
 	// 1. Parse Metadata
 	cat, iMac, iWin, iUbu, term, iDef := l.parseHeader(path)
-	
+
 	// 2. Create Temp ScriptItem
 	item := ScriptItem{
 		Name:          strings.TrimSuffix(filepath.Base(path), ".py"),
@@ -826,7 +832,7 @@ func (l *LauncherApp) runScriptFromPath(path string) {
 		Terminal:      term,
 		InterpDefault: iDef,
 	}
-	
+
 	// 3. Run
 	cmd := l.runScript(item)
 	if cmd != nil {
@@ -905,28 +911,28 @@ func (l *LauncherApp) registerWindowsAssociation() {
 	if runtime.GOOS != "windows" {
 		return
 	}
-	
+
 	exePath, err := os.Executable()
 	if err != nil {
 		dialog.ShowError(err, l.Window)
 		return
 	}
 	exePath, _ = filepath.Abs(exePath)
-	
+
 	// Format: "C:\Path\To\App.exe" "%1"
 	cmdVal := fmt.Sprintf(`"%s" "%%1"`, exePath)
 
 	// 1. HKCU\Software\Classes\.py (Associate .py with ProgID)
 	// Note: Use a custom ProgID to avoid messing with system python default unrecoverably?
 	// Better: PyQuickBox.PythonScript
-	
+
 	// We use "reg" command for simplicity
 	cmds := [][]string{
 		{"add", `HKCU\Software\Classes\.py`, "/ve", "/d", "PyQuickBox.PythonScript", "/f"},
 		{"add", `HKCU\Software\Classes\PyQuickBox.PythonScript`, "/ve", "/d", "Python Script", "/f"},
 		{"add", `HKCU\Software\Classes\PyQuickBox.PythonScript\shell\open\command`, "/ve", "/d", cmdVal, "/f"},
 	}
-	
+
 	for _, args := range cmds {
 		err := exec.Command("reg", args...).Run()
 		if err != nil {
@@ -934,7 +940,7 @@ func (l *LauncherApp) registerWindowsAssociation() {
 			return
 		}
 	}
-	
+
 	dialog.ShowInformation("Success", "Registered .py file association!\n(You may need to restart Explorer or choose PyQuickBox from 'Open With')", l.Window)
 }
 
@@ -1014,7 +1020,7 @@ func (l *LauncherApp) showSettingsDialog() {
 			widget.NewSeparator(),
 		)
 	}
-	
+
 	// Windows Association Button
 	var winAssocBox *fyne.Container
 	if runtime.GOOS == "windows" {
@@ -1134,7 +1140,7 @@ func (l *LauncherApp) showSettingsDialog() {
 	// Copyright Label (Docked at Bottom)
 	copyrightLabel := container.NewVBox(
 		widget.NewSeparator(),
-		widget.NewLabelWithStyle("(C) 2025 DINKI'ssTyle", fyne.TextAlignCenter, fyne.TextStyle{}),
+		widget.NewLabelWithStyle(fmt.Sprintf("Version %s | %s", AppVersion, AppCopyright), fyne.TextAlignCenter, fyne.TextStyle{}),
 	)
 
 	// Layout: Scrollable Center + Fixed Bottom
