@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\EFACO\\source\\repos\\PyQuickRun\\PyQuickRun\\PyQuickRun.csproj": {}
+    "C:\\Users\\EFACO\\Documents\\GitHub\\PyQuickRun\\PyQuickRun\\vs2022\\PyQuickRun\\PyQuickRun.csproj": {}
   },
   "projects": {
-    "C:\\Users\\EFACO\\source\\repos\\PyQuickRun\\PyQuickRun\\PyQuickRun.csproj": {
+    "C:\\Users\\EFACO\\Documents\\GitHub\\PyQuickRun\\PyQuickRun\\vs2022\\PyQuickRun\\PyQuickRun.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\EFACO\\source\\repos\\PyQuickRun\\PyQuickRun\\PyQuickRun.csproj",
+        "projectUniqueName": "C:\\Users\\EFACO\\Documents\\GitHub\\PyQuickRun\\PyQuickRun\\vs2022\\PyQuickRun\\PyQuickRun.csproj",
         "projectName": "PyQuickRun",
-        "projectPath": "C:\\Users\\EFACO\\source\\repos\\PyQuickRun\\PyQuickRun\\PyQuickRun.csproj",
+        "projectPath": "C:\\Users\\EFACO\\Documents\\GitHub\\PyQuickRun\\PyQuickRun\\vs2022\\PyQuickRun\\PyQuickRun.csproj",
         "packagesPath": "C:\\Users\\EFACO\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\EFACO\\source\\repos\\PyQuickRun\\PyQuickRun\\obj\\",
+        "outputPath": "C:\\Users\\EFACO\\Documents\\GitHub\\PyQuickRun\\PyQuickRun\\vs2022\\PyQuickRun\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"

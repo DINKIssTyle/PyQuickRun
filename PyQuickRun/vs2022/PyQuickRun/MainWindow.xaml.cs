@@ -104,17 +104,44 @@ namespace PyQuickRun
                 foreach (var line in lines)
                 {
                     string trimmed = line.Trim();
-                    if (trimmed.StartsWith("#pqr win", StringComparison.OrdinalIgnoreCase))
+                    if (trimmed.StartsWith("#pqr", StringComparison.OrdinalIgnoreCase))
                     {
-                        string remainder = trimmed.Substring("#pqr win".Length).Trim();
+                        // Remove #pqr and parse the rest
+                        string argsLine = trimmed.Substring(4).Trim();
+                        // Split by semicolon
+                        var parts = argsLine.Split(';');
+                        
+                        string foundPath = null;
                         bool forceTerminal = false;
 
-                        if (remainder.StartsWith("terminal", StringComparison.OrdinalIgnoreCase))
+                        foreach (var part in parts)
                         {
-                            forceTerminal = true;
-                            remainder = remainder.Substring("terminal".Length).Trim();
+                            var kv = part.Trim().Split('=');
+                            if (kv.Length == 2)
+                            {
+                                string key = kv[0].Trim().ToLower();
+                                string value = kv[1].Trim();
+
+                                if (key == "win")
+                                {
+                                    foundPath = value;
+                                }
+                                else if (key == "term")
+                                {
+                                    bool.TryParse(value, out forceTerminal);
+                                }
+                            }
                         }
-                        return (remainder, forceTerminal);
+
+                        // If we found at least a path or explicit terminal setting, return it.
+                        // However, based on requirements, if #pqr is present, we might want to return what we found.
+                        // The previous logic returned (remainder, forceTerminal) where remainder was the path.
+                        // Now we return (foundPath, forceTerminal).
+                        
+                        if (foundPath != null || forceTerminal)
+                        {
+                             return (foundPath, forceTerminal);
+                        }
                     }
                 }
             }

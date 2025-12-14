@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("PyQuickRun")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+99bfc9ec1b0b13d3281462a9ab3d2bfe3d430674")]
 [assembly: System.Reflection.AssemblyProductAttribute("PyQuickRun")]
 [assembly: System.Reflection.AssemblyTitleAttribute("PyQuickRun")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

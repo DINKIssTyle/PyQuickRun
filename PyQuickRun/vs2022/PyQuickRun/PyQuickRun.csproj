@@ -6,7 +6,7 @@
     <Nullable>disable</Nullable>
     <UseWPF>true</UseWPF>
     <RootNamespace>PyQuickRun</RootNamespace>
-    <ApplicationIcon>app_icon_512.ico</ApplicationIcon>
+    <ApplicationIcon>app_icon_256.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="app_icon_512.ico" />
+    <Content Include="app_icon_256.ico" />
   </ItemGroup>
 
   <ItemGroup>
