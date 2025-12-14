@@ -6,6 +6,12 @@
 
 ## 🧩 What is PyQuickRun?
 
+
+<p align="center">
+  <img src="resource/PyQuickRun.png" alt="Example Image" width="600">
+</p>
+
+
 **PyQuickRun** is a launcher that helps you execute Python (`.py`) scripts easily.
 
 - Run scripts by double-clicking
@@ -16,6 +22,11 @@
 ---
 
 ## 🗂 What is PyQuickBox?
+
+<p align="center">
+  <img src="resource/PyQuickBox.png" alt="Example Image" width="600">
+</p>
+
 
 **PyQuickBox** is a launchpad that lets you **collect, categorize, browse, and search** your Python scripts.
 
