@@ -1,58 +1,157 @@
-# PyQuickRun
+# 🚀 PyQuickRun & PyQuickBox
 
-A launcher that makes it easy to run Python scripts using predefined environments — including different operating systems, interpreters, and virtual environments.
-
-<div align="center">
-  <img src="assets/PyQuickRun.png?v=2" alt="icon" width="256" />
-  <br/> <br/> 
-  <img src="assets/PyQuickRun.gif" alt="Demo GIF" width="600" />
-  <br/> <br/> 
-  <img src="assets/PyQucikRun_Main.png" alt="Main Image" width="600" />
-</div>
+**PyQuickRun** and **PyQuickBox** are lightweight tools designed to make running and organizing Python (`.py`) scripts effortless across **Windows, macOS, and Linux**.
 
 ---
 
-## 🚀 Per-Script Configuration (Magic Comments)
+## 🧩 What is PyQuickRun?
 
-PyQuickRun allows each Python script to specify its own interpreter or execution mode using **magic comments**.  
-This is useful for multi-OS development, per-project virtual environments, and scripts that require terminal interaction.
+**PyQuickRun** is a launcher that helps you execute Python (`.py`) scripts easily.
 
-Magic comments must appear within the **first 20 lines** of the script.
+- Run scripts by double-clicking
+- Choose which Python interpreter to use
+- Decide whether to open a terminal or not
+- Works even if no special header is defined
 
 ---
 
-## 🧩 Syntax
-#pqr [os] [mode] [path]
+## 🗂 What is PyQuickBox?
+
+**PyQuickBox** is a launchpad that lets you **collect, categorize, browse, and search** your Python scripts.
+
+- Organize scripts by category
+- Grid-based visual browsing
+- Search and filter scripts instantly
+- Works seamlessly with PyQuickRun
+
+---
+
+## 🔧 Common Feature: `#pqr` Header
+
+Both tools support a special header called `#pqr`, embedded directly in `.py` files.
+
+This header allows you to **predefine**:
+- Which Python interpreter to use
+- Whether to run in a terminal
+- Platform-specific settings (Windows / macOS / Linux)
+- Script category (used by PyQuickBox)
+
+---
+
+### Basic `#pqr` Structure
+#pqr cat=Category;
+win=Path\to\python.exe;
+mac=/path/to/python;
+linux=/path/to/python;
+term=true;
 
 ---
 
 ## 📌 Examples
 
-### **1. Cross-Platform Paths**
+### ▶ Run on Windows without opening a terminal
+#pqr win=C:\Users\your_user\AppData\Local\Programs\Python\Python310\python.exe;term=false;
 
-The launcher automatically selects the correct interpreter based on the OS.
+### ▶ Run on macOS using a specific .venv
+#pqr mac=/Users/your_user/pythons/default/.venv/bin/python;term=false;
 
-**#pqr mac** ~/pythons/project_a/.venv/bin/python  
-**#pqr win** C:\Users\dinki\pythons\project_a\venv\Scripts\python.exe  
-**#pqr linux** /home/dinki/pythons/project_a/venv/bin/python  
-
-import sys
-.
-.
+### ▶ Category definition for PyQuickBox
+#pqr cat=Utilities;win=C:\Users\your_user\AppData\Local\Programs\Python\Python310\python.exe;term=true;
 
 
-### **2. Force Terminal Execution**
+> `cat=` is only used by PyQuickBox for categorization.
 
-Useful for scripts that require input() or TUI applications.
+---
 
-#pqr mac **terminal** ~/pythons/default/.venv/bin/python
+## ✏ Editing `#pqr`
 
-### 🔧 Behavior Logic
-	1.	Priority: #pqr magic comments override global launcher settings.
-	2.	Fallback: If no magic comment exists, PyQuickRun uses the global interpreter path.
-	3.	OS Detection: macOS uses only #pqr mac, ignoring win or linux entries.
+- You can write `#pqr` directly inside the `.py` file
+- Or edit it via the **Properties panel** in PyQuickBox
+
+---
+
+# 📦 Installation Guide
+
+## 🪟 Windows
+
+1. Download the Windows release from  
+   https://github.com/DINKIssTyle/PyQuickRun/releases
+2. Extract it to any folder
+3. Right-click a `.py` file → **Open with** → select **PyQuickRun**
+4. Set it as the default app for `.py` files
+
+---
+
+## 🍎 macOS
+
+1. Download the macOS release from  
+   https://github.com/DINKIssTyle/PyQuickRun/releases
+2. Extract it to `/Applications` or `~/Applications`
+3. Select a `.py` file → **Command + I**
+4. Set **Open with:** PyQuickRun
+5. Click **Change All**
+
+---
+
+## 🐧 Ubuntu / Linux
+
+1. Download the Linux release from  
+   https://github.com/DINKIssTyle/PyQuickRun/releases
+2. Extract and merge into your `home/` directory
+3. Associate `.py` files with PyQuickRun
+
+---
+
+# ▶ PyQuickRun – Basic Usage
+
+- Scripts run even without `#pqr` using **Interpreter Path**
+- Click **Browse** to select your default Python binary
+- **Run in Terminal / Command**
+  - Controls terminal launch
+  - Can be overridden by `#pqr term=`
+- **Close window after successful execution**
+  - Closes PyQuickRun after completion
+  - GUI scripts remain active
+- **Drag & Drop supported**
+- Errors appear in the **status bar**
+
+---
+
+# 🗃 PyQuickBox – Basic Usage
+
+- Register folders containing Python scripts
+- Categorization via `#pqr cat=`
+- Adjustable grid layout
+- Fast search
+- Theme support: Dark / Light / System
+- Settings:
+  - Default interpreter
+  - UI scale
+  - Script name font size
+- Remove folders with the trash icon
+
+### 💡 Tips
+
+- Drag folders into the main window to register them
+- Drag `.py` files to run instantly (PyQuickRun behavior)
+- If an `icon` folder exists inside a script directory, PyQuickBox will use it for custom icons.
+- Place a `.png` file with the **same name as the Python script** to assign a custom icon.
   
-  
-  
-  
-  
+  Example:
+  my_tool.py
+  icon/my_tool.png
+
+- You can also define a fallback icon by adding:
+  icon/default.png
+
+  This image will be used for scripts that do not have a matching icon file.
+
+---
+
+## ✨ Why PyQuickRun & PyQuickBox?
+
+- No complex setup
+- No project lock-in
+- Supports system Python, `.venv`, and custom interpreters
+- Ideal for utilities, tools, and script collections
+
