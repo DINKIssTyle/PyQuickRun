@@ -1,0 +1,9 @@
+C:\Users\EFACO\source\repos\PyQuickRun\PyQuickRun\obj\Debug\net8.0-windows\App.g.cs
+C:\Users\EFACO\source\repos\PyQuickRun\PyQuickRun\obj\Debug\net8.0-windows\PyQuickRun_MarkupCompile.cache
+C:\Users\EFACO\source\repos\PyQuickRun\PyQuickRun\obj\Debug\net8.0-windows\MainWindow.baml
+C:\Users\EFACO\source\repos\PyQuickRun\PyQuickRun\obj\Debug\net8.0-windows\MainWindow.g.cs
+C:\Users\EFACO\source\repos\PyQuickRun\PyQuickRun\obj\Debug\net8.0-windows\PyQuickRun.g.resources
+C:\Users\EFACO\source\repos\PyQuickRun\PyQuickRun\obj\Debug\net8.0-windows\PyQuickRun.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\EFACO\source\repos\PyQuickRun\PyQuickRun\obj\Debug\net8.0-windows\PyQuickRun.AssemblyInfoInputs.cache
+C:\Users\EFACO\source\repos\PyQuickRun\PyQuickRun\obj\Debug\net8.0-windows\PyQuickRun.AssemblyInfo.cs
+C:\Users\EFACO\source\repos\PyQuickRun\PyQuickRun\obj\Debug\net8.0-windows\PyQuickRun.csproj.CoreCompileInputs.cache
