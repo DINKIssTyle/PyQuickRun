@@ -8,6 +8,8 @@
     <string>com.dinkisstyle.pyquickbox</string>
     <key>CFBundleName</key>
     <string>PyQuickBox</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
     <key>CFBundleVersion</key>

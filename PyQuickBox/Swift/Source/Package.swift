@@ -16,7 +16,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "PyQuickBox",
-            path: "Sources/PyQuickBox",
+            path: ".",
             resources: []
         ),
     ]

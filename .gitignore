@@ -46,3 +46,5 @@ PyQuickRun/vs2022/PyQuickRun/bin/Release/PyQuickRun/PyQuickRun.deps.json
 PyQuickBox/Go/.DS_Store
 PyQuickBox/Go/PyQuickBox.exe
 /PyQuickBox/xcode/PyQuickBox/.build
+/PyQuickBox/Swift/Source/.build
+PyQuickBox/.DS_Store

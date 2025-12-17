@@ -38,7 +38,7 @@ struct ContentView: View {
                 viewModel.updateFilteredScripts()
             }
             .toolbar {
-                ToolbarItemGroup(placement: .confirmationAction) {
+                ToolbarItemGroup(placement: .navigation) {
                     Slider(value: $viewModel.iconSize, in: 32...200) {
                         Text("Icon Size")
                     }
@@ -51,6 +51,10 @@ struct ContentView: View {
                     Button(action: { showingSettings = true }) {
                         Label("Settings", systemImage: "gear")
                     }
+                }
+                
+                ToolbarItem(placement: .principal) {
+                    Spacer()
                 }
             }
             .sheet(isPresented: $showingSettings) {

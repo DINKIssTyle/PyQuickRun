@@ -26,7 +26,17 @@ class LauncherViewModel: ObservableObject {
         }
     }
     
+    private var cancellables = Set<AnyCancellable>()
+
     init() {
+        $searchText
+            .debounce(for: .milliseconds(200), scheduler: RunLoop.main)
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                self?.updateFilteredScripts()
+            }
+            .store(in: &cancellables)
+            
         refreshScripts()
     }
     

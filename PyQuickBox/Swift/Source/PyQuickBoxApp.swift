@@ -7,7 +7,7 @@ struct PyQuickBoxApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(viewModel: viewModel)
-                .frame(minWidth: 800, minHeight: 600)
+                .frame(minWidth: 600, minHeight: 400)
         }
         .windowStyle(.hiddenTitleBar) // Custom or hidden title bar if needed
         .commands {
