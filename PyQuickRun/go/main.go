@@ -43,13 +43,49 @@ func main() {
 		prefs.SetString("pythonPath", s)
 	}
 
-	browseBtn := widget.NewButtonWithIcon("Browse", theme.FolderOpenIcon(), func() {
+	// --- 자동 감지 로직 ---
+	autoDetect := func(dir string) {
+		candidates := []string{
+			filepath.Join(dir, ".venv", "bin", "python"),
+			filepath.Join(dir, ".venv", "bin", "python3"),
+			filepath.Join(dir, "venv", "bin", "python"),
+			filepath.Join(dir, "venv", "bin", "python3"),
+			filepath.Join(dir, "env", "bin", "python"), // Some use 'env'
+		}
+
+		found := ""
+		for _, c := range candidates {
+			if _, err := os.Stat(c); err == nil {
+				found = c
+				break
+			}
+		}
+
+		if found != "" {
+			pathEntry.SetText(found)
+			statusLabel.SetText("Auto-selected: " + found)
+		} else {
+			statusLabel.SetText("No venv found in: " + filepath.Base(dir))
+			dialog.ShowInformation("No Venv Found", "Could not find standard virtualenv (bin/python) in:\n"+dir, w)
+		}
+	}
+
+	browseBtn := widget.NewButtonWithIcon("Binary", theme.FileIcon(), func() {
 		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if err == nil && reader != nil {
 				pathEntry.SetText(reader.URI().Path())
 			}
 		}, w)
 		fileDialog.Show()
+	})
+
+	projBtn := widget.NewButtonWithIcon("Project", theme.FolderIcon(), func() {
+		folderDialog := dialog.NewFolderOpen(func(list fyne.ListableURI, err error) {
+			if err == nil && list != nil {
+				autoDetect(list.Path())
+			}
+		}, w)
+		folderDialog.Show()
 	})
 
 	chkTerminal := widget.NewCheck("Run in Terminal window", func(b bool) {
@@ -138,10 +174,13 @@ func main() {
 	w.SetOnDropped(func(pos fyne.Position, uris []fyne.URI) {
 		if len(uris) > 0 {
 			path := uris[0].Path()
-			if strings.HasSuffix(strings.ToLower(path), ".py") {
+			// 폴더인지 확인
+			if fi, err := os.Stat(path); err == nil && fi.IsDir() {
+				autoDetect(path)
+			} else if strings.HasSuffix(strings.ToLower(path), ".py") {
 				runScript(path)
 			} else {
-				statusLabel.SetText("Error: Only .py files supported")
+				statusLabel.SetText("Error: Only .py files or Project folders supported")
 			}
 		}
 	})
@@ -164,7 +203,7 @@ func main() {
 		widget.NewLabelWithStyle(AppName, fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
 		widget.NewSeparator(),
 		widget.NewLabel("Interpreter Path:"),
-		container.NewBorder(nil, nil, nil, browseBtn, pathEntry),
+		container.NewBorder(nil, nil, nil, container.NewHBox(browseBtn, projBtn), pathEntry),
 		chkTerminal,
 		chkClose,
 		layout.NewSpacer(),

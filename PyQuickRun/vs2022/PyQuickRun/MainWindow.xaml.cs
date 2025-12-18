@@ -77,6 +77,44 @@ namespace PyQuickRun
             }
         }
 
+        private void BtnProject_Click(object sender, RoutedEventArgs e)
+        {
+            using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
+            {
+                dialog.Description = "Select Project Folder";
+                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                {
+                    AutoDetectAndSetPython(dialog.SelectedPath);
+                }
+            }
+        }
+
+        private void AutoDetectAndSetPython(string folderPath)
+        {
+            // Windows standard venv paths
+            string[] candidates = {
+                Path.Combine(folderPath, ".venv", "Scripts", "python.exe"),
+                Path.Combine(folderPath, "venv", "Scripts", "python.exe"),
+                Path.Combine(folderPath, "env", "Scripts", "python.exe"),
+                // Fallback to bin for cross-platform formed venvs on Windows (rare but possible)
+                Path.Combine(folderPath, ".venv", "bin", "python.exe"), 
+            };
+
+            string found = candidates.FirstOrDefault(File.Exists);
+
+            if (found != null)
+            {
+                TxtPythonPath.Text = found;
+                SetStatus($"Auto-detected venv: {found}", false);
+                SaveSettings();
+            }
+            else
+            {
+                MessageBox.Show("Could not find standard virtualenv (Scripts/python.exe) in:\n" + folderPath, 
+                                "No Venv Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
         private void DropZone_DragEnter(object sender, DragEventArgs e)
         {
             if (e.Data.GetDataPresent(DataFormats.FileDrop)) e.Effects = DragDropEffects.Copy;
@@ -89,9 +127,19 @@ namespace PyQuickRun
                 string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
                 if (files != null && files.Length > 0)
                 {
-                    string file = files[0];
-                    if (Path.GetExtension(file).ToLower() == ".py") ExecuteScript(file);
-                    else SetStatus("Error: Only .py files are supported.", true);
+                    string fileOrDir = files[0];
+                    if (Directory.Exists(fileOrDir))
+                    {
+                        AutoDetectAndSetPython(fileOrDir);
+                    }
+                    else if (Path.GetExtension(fileOrDir).ToLower() == ".py") 
+                    {
+                        ExecuteScript(fileOrDir);
+                    }
+                    else 
+                    {
+                        SetStatus("Error: Only .py files or Project folders supported.", true);
+                    }
                 }
             }
         }

@@ -159,10 +159,36 @@ struct ContentView: View {
     func selectInterpreter() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
+        panel.canChooseDirectories = true // Enable folder selection
         panel.allowsMultipleSelection = false
-        panel.prompt = "Select Python"
-        if panel.runModal() == .OK {
-            self.pythonPath = panel.url?.path ?? ""
+        panel.prompt = "Select Python or Project Folder"
+        
+        if panel.runModal() == .OK, let url = panel.url {
+            var finalPath = url.path
+            
+            // Check if it's a directory
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: finalPath, isDirectory: &isDir) && isDir.boolValue {
+                // Attempt to find venv python
+                let candidates = [
+                    url.appendingPathComponent(".venv/bin/python").path,
+                    url.appendingPathComponent(".venv/bin/python3").path,
+                    url.appendingPathComponent("venv/bin/python").path,
+                    url.appendingPathComponent("venv/bin/python3").path,
+                    url.appendingPathComponent("env/bin/python").path
+                ]
+                
+                if let found = candidates.first(where: { FileManager.default.fileExists(atPath: $0) }) {
+                    finalPath = found
+                    self.statusMessage = "Auto-detected venv: \(finalPath)"
+                } else {
+                    self.statusMessage = "No standard virtualenv found in selected folder."
+                    // If not found, we don't update pythonPath because it must be a binary/file usually.
+                    return 
+                }
+            }
+            
+            self.pythonPath = finalPath
         }
     }
 
