@@ -738,13 +738,75 @@ func (l *LauncherApp) showSettingsDialog() {
 	pythonEntry := widget.NewEntry()
 	pythonEntry.SetText(l.DefaultPythonPath)
 
-	pythonBtn := widget.NewButton("Browse", func() {
+	// --- Auto Detect Logic ---
+	autoDetect := func(dir string) {
+		candidates := []string{
+			filepath.Join(dir, ".venv", "bin", "python"),
+			filepath.Join(dir, ".venv", "bin", "python3"),
+			filepath.Join(dir, "venv", "bin", "python"),
+			filepath.Join(dir, "venv", "bin", "python3"),
+			filepath.Join(dir, "env", "bin", "python"),
+		}
+		// Windows specific candidates
+		if runtime.GOOS == "windows" {
+			candidates = append(candidates,
+				filepath.Join(dir, ".venv", "Scripts", "python.exe"),
+				filepath.Join(dir, "venv", "Scripts", "python.exe"),
+				filepath.Join(dir, "env", "Scripts", "python.exe"),
+			)
+		}
+
+		found := ""
+		for _, c := range candidates {
+			if _, err := os.Stat(c); err == nil {
+				found = c
+				break
+			}
+		}
+
+		// Go Project Detection
+		if found == "" {
+			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+				if path, err := exec.LookPath("go"); err == nil {
+					found = path
+				}
+			}
+		}
+
+		// Swift Project Detection
+		if found == "" {
+			if _, err := os.Stat(filepath.Join(dir, "Package.swift")); err == nil {
+				if path, err := exec.LookPath("swift"); err == nil {
+					found = path
+				}
+			}
+		}
+
+		if found != "" {
+			pythonEntry.SetText(found)
+		} else {
+			dialog.ShowInformation("No Environment Found", "Could not find virtualenv, go.mod, or Package.swift in:\n"+dir, w)
+		}
+	}
+
+	pythonBtn := widget.NewButtonWithIcon("", theme.FileIcon(), func() {
 		dialog.ShowFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if err == nil && reader != nil {
 				pythonEntry.SetText(reader.URI().Path())
 			}
 		}, w)
 	})
+
+	projBtn := widget.NewButtonWithIcon("", theme.FolderIcon(), func() {
+		dialog.ShowFolderOpen(func(list fyne.ListableURI, err error) {
+			if err == nil && list != nil {
+				autoDetect(list.Path())
+			}
+		}, w)
+	})
+
+	// Layout for Interpreter Path
+	interpContainer := container.NewBorder(nil, nil, nil, container.NewHBox(pythonBtn, projBtn), pythonEntry)
 
 	fontSlider := widget.NewSlider(10, 24)
 	fontSlider.Step = 1
@@ -825,9 +887,13 @@ func (l *LauncherApp) showSettingsDialog() {
 	}
 	scaleContainer := container.NewBorder(nil, nil, nil, scaleLabel, scaleSlider)
 
+	settingsForm := container.NewGridWithColumns(2,
+		widget.NewLabel("Interpreter Path:"), interpContainer,
+		widget.NewLabel("UI Font Size:"), fontContainer,
+	)
+
 	settingsItems := []fyne.CanvasObject{
-		widget.NewLabelWithStyle("Default Python Path:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		container.NewBorder(nil, nil, nil, pythonBtn, pythonEntry),
+		settingsForm,
 		widget.NewSeparator(),
 
 		widget.NewLabelWithStyle("UI Scale (Restart Required):", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
