@@ -1,4 +1,7 @@
+// Created by DINKIssTyle on 2026. Copyright (C) 2026 DINKI'ssTyle. All rights reserved.
+
 import SwiftUI
+
 import UniformTypeIdentifiers
 
 @main
@@ -115,7 +118,7 @@ struct ContentView: View {
                 
                 Spacer(minLength: 10)
                 
-                Text("© 2025 DINKIssTyle")
+                Text("© 2026 DINKIssTyle")
                     .font(.system(size: 10))
                     .foregroundColor(.gray.opacity(0.6))
                     .padding(.top, 2)
@@ -262,9 +265,22 @@ struct ContentView: View {
             let resolvedCustom = resolvePath(customPath)
             if !resolvedCustom.isEmpty {
                 finalInterpreter = resolvedCustom
-                print("Custom interpreter: \(finalInterpreter)")
+                print("Custom interpreter from #qpr: \(finalInterpreter)")
+            }
+        } else {
+            // 2. .venv 자동 감지 (스크립트 위치 기반)
+            let venvCandidates = [
+                url.deletingLastPathComponent().appendingPathComponent(".venv/bin/python").path,
+                url.deletingLastPathComponent().appendingPathComponent(".venv/bin/python3").path
+            ]
+            
+            if let foundVenv = venvCandidates.first(where: { FileManager.default.fileExists(atPath: $0) }) {
+                finalInterpreter = foundVenv
+                print("Auto-detected venv: \(finalInterpreter)")
+                statusMessage = "Using local .venv: \(finalInterpreter)"
             }
         }
+
         // term이 명시되면 체크박스 무시하고 강제 적용
         if let termOverride = header.terminalOverride {
             shouldRunInTerminal = termOverride

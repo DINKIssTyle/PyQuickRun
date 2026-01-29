@@ -1,3 +1,5 @@
+// Created by DINKIssTyle on 2026. Copyright (C) 2026 DINKI'ssTyle. All rights reserved.
+
 package main
 
 import (
@@ -105,19 +107,52 @@ func main() {
 		closeWin := chkClose.Checked
 		workDir := filepath.Dir(scriptPath)
 
-		// 헤더 파싱
+		// 헤더 파싱 및 .venv 감지
+		foundInterpreter := ""
 		if file, err := os.Open(scriptPath); err == nil {
 			scanner := bufio.NewScanner(file)
 			for i := 0; i < 20 && scanner.Scan(); i++ {
 				line := strings.TrimSpace(scanner.Text())
-				if strings.HasPrefix(line, "#pqr linux") {
-					opt := strings.TrimSpace(strings.TrimPrefix(line, "#pqr linux"))
-					if strings.ToLower(opt) == "terminal" {
-						useTerm = true
+				if strings.HasPrefix(strings.ToLower(line), "#pqr") {
+					// Parse key=value pairs
+					remainder := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(line), "#pqr"))
+					parts := strings.Split(remainder, ";")
+					for _, part := range parts {
+						kv := strings.Split(strings.TrimSpace(part), "=")
+						if len(kv) == 2 {
+							key := strings.TrimSpace(kv[0])
+							val := strings.TrimSpace(kv[1])
+							if key == "linux" && val != "" {
+								foundInterpreter = val
+							} else if key == "term" {
+								if val == "true" || val == "1" || val == "yes" {
+									useTerm = true
+								} else if val == "false" || val == "0" || val == "no" {
+									useTerm = false
+								}
+							}
+						}
 					}
 				}
 			}
 			file.Close()
+		}
+
+		if foundInterpreter != "" {
+			pythonBin = foundInterpreter
+		} else {
+			// .venv 자동 감지
+			venvCandidates := []string{
+				filepath.Join(workDir, ".venv", "bin", "python"),
+				filepath.Join(workDir, ".venv", "bin", "python3"),
+			}
+			for _, c := range venvCandidates {
+				if _, err := os.Stat(c); err == nil {
+					pythonBin = c
+					statusLabel.SetText("Using local .venv: " + pythonBin)
+					break
+				}
+			}
 		}
 
 		statusLabel.SetText("Running: " + filepath.Base(scriptPath))
@@ -185,7 +220,7 @@ func main() {
 		}
 	})
 
-	dropIcon := widget.NewIcon(theme.UploadIcon()) 
+	dropIcon := widget.NewIcon(theme.UploadIcon())
 	dropText := widget.NewLabel("Drag & Drop .py file here\n(or Drop anywhere in window)")
 	dropText.Alignment = fyne.TextAlignCenter
 

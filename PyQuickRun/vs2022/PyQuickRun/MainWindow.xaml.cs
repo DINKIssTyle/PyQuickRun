@@ -1,4 +1,7 @@
-﻿#nullable disable
+﻿// Created by DINKIssTyle on 2026. Copyright (C) 2026 DINKI'ssTyle. All rights reserved.
+
+#nullable disable
+
 
 using System;
 using System.Diagnostics;
@@ -205,7 +208,25 @@ namespace PyQuickRun
             string workingDir = Path.GetDirectoryName(scriptPath);
 
             var pqr = ScanPqrHeader(scriptPath);
-            if (!string.IsNullOrEmpty(pqr.path)) interpreter = pqr.path;
+            if (!string.IsNullOrEmpty(pqr.path))
+            {
+                interpreter = pqr.path;
+            }
+            else
+            {
+                // Auto-detect .venv
+                string[] venvCandidates = {
+                    Path.Combine(workingDir, ".venv", "Scripts", "python.exe"),
+                    Path.Combine(workingDir, ".venv", "bin", "python.exe")
+                };
+                string foundVenv = venvCandidates.FirstOrDefault(File.Exists);
+                if (foundVenv != null)
+                {
+                    interpreter = foundVenv;
+                    SetStatus($"Using local .venv: {foundVenv}", false);
+                }
+            }
+
             if (pqr.forceTerminal) useTerminal = true;
 
             if (useTerminal) RunInTerminal(interpreter, scriptPath, workingDir);
