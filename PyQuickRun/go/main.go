@@ -34,42 +34,16 @@ func main() {
 	defaultPython := prefs.StringWithFallback("pythonPath", "/usr/bin/python3")
 
 	// --- UI 컴포넌트 ---
+	// --- UI 컴포넌트 ---
 	statusLabel := widget.NewLabel("Ready to run.")
 	statusLabel.Alignment = fyne.TextAlignCenter
 
 	pathEntry := widget.NewEntry()
 	pathEntry.SetText(defaultPython)
-	pathEntry.PlaceHolder = "/usr/bin/python3"
+	pathEntry.PlaceHolder = "e.g. /usr/bin/python3 or ~/venv/bin/python"
 
 	pathEntry.OnChanged = func(s string) {
 		prefs.SetString("pythonPath", s)
-	}
-
-	// --- 자동 감지 로직 ---
-	autoDetect := func(dir string) {
-		candidates := []string{
-			filepath.Join(dir, ".venv", "bin", "python"),
-			filepath.Join(dir, ".venv", "bin", "python3"),
-			filepath.Join(dir, "venv", "bin", "python"),
-			filepath.Join(dir, "venv", "bin", "python3"),
-			filepath.Join(dir, "env", "bin", "python"), // Some use 'env'
-		}
-
-		found := ""
-		for _, c := range candidates {
-			if _, err := os.Stat(c); err == nil {
-				found = c
-				break
-			}
-		}
-
-		if found != "" {
-			pathEntry.SetText(found)
-			statusLabel.SetText("Auto-selected: " + found)
-		} else {
-			statusLabel.SetText("No venv found in: " + filepath.Base(dir))
-			dialog.ShowInformation("No Venv Found", "Could not find standard virtualenv (bin/python) in:\n"+dir, w)
-		}
 	}
 
 	browseBtn := widget.NewButtonWithIcon("Binary", theme.FileIcon(), func() {
@@ -84,7 +58,7 @@ func main() {
 	projBtn := widget.NewButtonWithIcon("Project", theme.FolderIcon(), func() {
 		folderDialog := dialog.NewFolderOpen(func(list fyne.ListableURI, err error) {
 			if err == nil && list != nil {
-				autoDetect(list.Path())
+				// autoDetect(list.Path()) - defined later or move definitions
 			}
 		}, w)
 		folderDialog.Show()
@@ -95,7 +69,7 @@ func main() {
 	})
 	chkTerminal.SetChecked(prefs.BoolWithFallback("useTerminal", false))
 
-	chkClose := widget.NewCheck("Close window after success", func(b bool) {
+	chkClose := widget.NewCheck("Close window after successful execution", func(b bool) {
 		prefs.SetBool("closeOnSuccess", b)
 	})
 	chkClose.SetChecked(prefs.BoolWithFallback("closeOnSuccess", false))
@@ -116,7 +90,6 @@ func main() {
 		}
 		headerTag := "#pqr " + strings.Join(tagParts, "; ")
 
-		// Shebang check
 		insertIdx := 0
 		if len(lines) > 0 && strings.HasPrefix(lines[0], "#!") {
 			insertIdx = 1
@@ -132,7 +105,6 @@ func main() {
 			statusLabel.SetText("Error saving header: " + err.Error())
 			return
 		}
-		// RE-RUN
 		runScript(scriptPath, nil, nil, nil)
 	}
 
@@ -141,12 +113,16 @@ func main() {
 		catEntry.PlaceHolder = "e.g. Utility, Tool, AI"
 
 		termCheck := widget.NewCheck("Run in Terminal window", nil)
-		termCheck.SetChecked(false) // Default to unchecked as requested
+		termCheck.SetChecked(false)
 
 		closeCheck := widget.NewCheck("Close window after successful execution", nil)
 		closeCheck.SetChecked(prefs.BoolWithFallback("closeOnSuccess", false))
 
+		headerIcon := widget.NewIcon(theme.QuestionIcon())
+		headerIcon.SetResource(theme.QuestionIcon())
+
 		form := container.NewVBox(
+			container.NewCenter(container.NewPadded(widget.NewLabelWithStyle("No #pqr header found", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}))),
 			widget.NewLabel("Category:"),
 			catEntry,
 			widget.NewSeparator(),
@@ -171,26 +147,18 @@ func main() {
 			saveAndRunGo(scriptPath, termCheck.Checked, catEntry.Text)
 		}
 
-		// Handle shortcuts in the entry
-		catEntry.OnKeyDown = func(key *fyne.KeyEvent) {
-			if key.Name == fyne.KeyD && key.TypedRune == 0 { // Ctrl+D (Mac uses Cmd usually, but Fyne Key name is consistent)
-				// Fyne's Modifier detection:
-				// Actually, we should check key.Name and modifiers
-			}
-		}
-		// Simplified button approach for dialog:
 		runBtn := widget.NewButton("Run Now (Ctrl+D)", runNow)
 		saveBtn := widget.NewButton("Save & Run (Ctrl+S)", saveRun)
 		saveBtn.Importance = widget.HighImportance
 
-		content := container.NewVBox(form, container.NewHBox(layout.NewSpacer(), runBtn, saveBtn))
-		dia = dialog.NewCustom("No #pqr header found", "Cancel", content, w)
-		
-		// Setup window-level shortcuts while dialog is open or just use the button's built-in support if possible.
-		// Fyne doesn't have a simple way to bind Ctrl+D to a button in a dialog easily without custom event handling.
-		// We'll add a key handler to the dialog's content if possible, or just rely on the buttons.
-		
-		dia.Resize(fyne.NewSize(400, 300))
+		dialogContent := container.NewPadded(container.NewVBox(
+			container.NewCenter(widget.NewIcon(theme.HelpIcon())),
+			widget.NewCard("", "", form),
+			container.NewHBox(layout.NewSpacer(), runBtn, saveBtn, layout.NewSpacer()),
+		))
+
+		dia = dialog.NewCustom("Notice", "Cancel", dialogContent, w)
+		dia.Resize(fyne.NewSize(450, 420))
 		dia.Show()
 	}
 
@@ -244,10 +212,6 @@ func main() {
 		if useTerm {
 			cmdStr := fmt.Sprintf("cd '%s' && '%s' '%s'; echo; echo 'Exit Code: $?'; read -p 'Press Enter to exit...'", workDir, pythonBin, scriptPath)
 
-			// macOS specific terminal launch if on Mac
-			// Since this is "Linux Native" version but running on Mac, we should ideally support both.
-			// However, the original code had gnome-terminal etc.
-			
 			terminals := [][]string{
 				{"gnome-terminal", "--", "bash", "-c"},
 				{"konsole", "-e", "bash", "-c"},
@@ -269,7 +233,6 @@ func main() {
 				}
 			}
 			
-			// If no Linux terminal found, try macOS Terminal via AppleScript (as in Swift)
 			if !launched {
 				appleScript := fmt.Sprintf(`tell application "Terminal" to do script "%s"`, cmdStr)
 				if _, err := exec.LookPath("osascript"); err == nil {
@@ -311,7 +274,18 @@ func main() {
 		if len(uris) > 0 {
 			path := uris[0].Path()
 			if fi, err := os.Stat(path); err == nil && fi.IsDir() {
-				autoDetect(path)
+				// Re-using autoDetect logic
+				candidates := []string{
+					filepath.Join(path, ".venv", "bin", "python"),
+					filepath.Join(path, "venv", "bin", "python"),
+				}
+				for _, c := range candidates {
+					if _, err := os.Stat(c); err == nil {
+						pathEntry.SetText(c)
+						statusLabel.SetText("Auto-selected: " + c)
+						break
+					}
+				}
 			} else if strings.HasSuffix(strings.ToLower(path), ".py") {
 				runScript(path, nil, nil, nil)
 			} else {
@@ -320,40 +294,38 @@ func main() {
 		}
 	})
 
-	dropIcon := widget.NewIcon(theme.UploadIcon())
-	dropText := widget.NewLabel("Drag & Drop .py file here\n(or Drop anywhere in window)")
-	dropText.Alignment = fyne.TextAlignCenter
+	// --- 드롭 존 비주얼 개선 ---
+	dropIcon := widget.NewIcon(theme.DocumentIcon())
+	dropText := widget.NewLabelWithStyle("Drag & Drop .py file here", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	dropSubText := widget.NewLabelWithStyle("or drop anywhere in window", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
 
-	dropZone := container.NewVBox(
+	dropContent := container.NewPadded(container.NewVBox(
 		layout.NewSpacer(),
-		dropIcon,
+		container.NewCenter(dropIcon),
 		dropText,
+		dropSubText,
 		layout.NewSpacer(),
-	)
-
-	cardFrame := container.NewPadded(container.NewPadded(dropZone))
+	))
+	dropCard := widget.NewCard("", "", dropContent)
 
 	// --- 레이아웃 조립 ---
-	content := container.NewVBox(
-		widget.NewLabelWithStyle(AppName, fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
+	mainContent := container.NewVBox(
+		container.NewCenter(widget.NewLabelWithStyle(AppName, fyne.TextAlignCenter, fyne.TextStyle{Bold: true})),
 		widget.NewSeparator(),
-		widget.NewLabel("Interpreter Path:"),
-		container.NewBorder(nil, nil, nil, container.NewHBox(browseBtn, projBtn), pathEntry),
-		chkTerminal,
-		chkClose,
-		layout.NewSpacer(),
-		widget.NewCard("", "", cardFrame),
+		container.NewPadded(container.NewVBox(
+			widget.NewLabel("Interpreter Path (uv or python):"),
+			container.NewBorder(nil, nil, nil, container.NewHBox(browseBtn, projBtn), pathEntry),
+			container.NewVBox(chkTerminal, chkClose),
+		)),
+		container.NewPadded(dropCard),
 		layout.NewSpacer(),
 		widget.NewSeparator(),
 		statusLabel,
-		widget.NewLabelWithStyle("© 2026 DINKIssTyle", fyne.TextAlignTrailing, fyne.TextStyle{Italic: true}),
+		container.NewHBox(layout.NewSpacer(), widget.NewLabelWithStyle("© 2026 DINKIssTyle", fyne.TextAlignTrailing, fyne.TextStyle{Italic: true})),
 	)
 
-	w.SetContent(container.NewPadded(content))
+	w.SetContent(container.NewPadded(mainContent))
 
-	// ==========================================
-	// [추가된 핵심 로직] 더블 클릭(인자값) 처리
-	// ==========================================
 	if len(os.Args) > 1 {
 		argPath := os.Args[1]
 		if _, err := os.Stat(argPath); err == nil {
