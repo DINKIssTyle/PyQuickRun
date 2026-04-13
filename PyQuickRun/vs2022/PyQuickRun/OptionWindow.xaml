@@ -22,7 +22,7 @@
                 <TextBox x:Name="TxtCategory" Height="26" VerticalContentAlignment="Center" Padding="5,0" Margin="0,0,0,15"
                          Tag="e.g. Utility, Tool, AI"/>
 
-                <TextBlock Text="Execution Settings:" FontSize="12" Foreground="Gray" Margin="0,0,0,5"/>
+                <TextBlock Text="Next time this script will:" FontSize="12" Foreground="Gray" Margin="0,0,0,5"/>
                 <CheckBox x:Name="ChkTerminal" Content="Run in Command Prompt (CMD)" Margin="0,2"/>
                 <CheckBox x:Name="ChkCloseOnSuccess" Content="Close window after successful execution" Margin="0,2"/>
             </StackPanel>

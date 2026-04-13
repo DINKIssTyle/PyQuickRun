@@ -150,7 +150,7 @@ func main() {
 			widget.NewLabel("Category:"),
 			catEntry,
 			widget.NewSeparator(),
-			widget.NewLabel("Execution Settings:"),
+			widget.NewLabel("Next time this script will:"),
 			termCheck,
 			closeCheck,
 			layout.NewSpacer(),

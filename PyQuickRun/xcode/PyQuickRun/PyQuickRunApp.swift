@@ -469,7 +469,7 @@ struct OptionDialogView: View {
 
                 Divider().padding(.vertical, 5)
 
-                Text("Execution Settings:")
+                Text("Next time this script will:")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                 
