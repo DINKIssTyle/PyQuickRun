@@ -27,6 +27,13 @@ struct ContentView: View {
     @State private var statusMessage: String = "Ready to run."
     @State private var isTargeted: Bool = false
     @State private var isRunning: Bool = false
+    
+    // --- xcode option dialog states ---
+    @State private var showingOptions = false
+    @State private var pendingScriptURL: URL? = nil
+    @State private var dialogUseTerminal: Bool = true
+    @State private var dialogCloseOnSuccess: Bool = false
+    @State private var dialogCategory: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -130,6 +137,25 @@ struct ContentView: View {
         .onOpenURL { url in
             executeScript(url: url)
         }
+        .sheet(isPresented: $showingOptions) {
+            OptionDialogView(
+                useTerminal: $dialogUseTerminal,
+                closeOnSuccess: $dialogCloseOnSuccess,
+                category: $dialogCategory,
+                onRunNow: {
+                    showingOptions = false
+                    if let url = pendingScriptURL {
+                        performExecution(url: url, manualTerminal: dialogUseTerminal, manualClose: dialogCloseOnSuccess)
+                    }
+                },
+                onSaveAndRun: {
+                    showingOptions = false
+                    if let url = pendingScriptURL {
+                        saveAndRun(url: url, term: dialogUseTerminal, close: dialogCloseOnSuccess, category: dialogCategory)
+                    }
+                }
+            )
+        }
     }
 
     // --- 기능 함수들 ---
@@ -199,10 +225,8 @@ struct ContentView: View {
         return (path as NSString).expandingTildeInPath
     }
     
-    // [UPDATED] 헤더 파싱: 키-값 포맷 지원
-    // 형식: #pqr cat=Tool; mac=/path/to/python; win=...; linux=...; term=false
-    // 반환값: (인터프리터경로, 터미널강제옵션(있을때만), 카테고리)
-    func scanPqrHeader(url: URL) -> (interpreter: String?, terminalOverride: Bool?, category: String?) {
+    // [UPDATED] 헤더 파싱: 키-값 포맷 지원 및 존재 여부 반환
+    func scanPqrHeader(url: URL) -> (interpreter: String?, terminalOverride: Bool?, category: String?, hasPqr: Bool) {
         do {
             let content = try String(contentsOf: url, encoding: .utf8)
             let lines = content.components(separatedBy: .newlines)
@@ -214,10 +238,8 @@ struct ContentView: View {
 
                 // '#pqr' 이후 부분만 추출
                 var remainder = trimmed.dropFirst(4) // remove '#pqr'
-                // 앞 공백과 콜론/대시 등 제거
                 remainder = Substring(remainder.trimmingCharacters(in: .whitespacesAndNewlines))
 
-                // 세미콜론으로 분리된 key=value 쌍 파싱
                 let pairs = remainder.split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }
 
                 var dict: [String: String] = [:]
@@ -228,7 +250,6 @@ struct ContentView: View {
                     }
                 }
 
-                // 키 추출
                 let category = dict["cat"]
                 let macPath = dict["mac"]
                 let termString = dict["term"]?.lowercased()
@@ -242,33 +263,73 @@ struct ContentView: View {
                     }
                 }
 
-                // 현재는 macOS 전용이므로 mac 키를 우선 사용
-                return (interpreter: macPath, terminalOverride: terminalOverride, category: category)
+                return (interpreter: macPath, terminalOverride: terminalOverride, category: category, hasPqr: true)
             }
         } catch {
             print("Header scan failed: \(error)")
         }
-        return (nil, nil, nil)
+        return (nil, nil, nil, false)
     }
 
     func executeScript(url: URL) {
+        let header = scanPqrHeader(url: url)
+        
+        if !header.hasPqr {
+            // #pqr 헤더가 없는 경우 옵션창 표시
+            self.pendingScriptURL = url
+            self.dialogUseTerminal = false // Default to unchecked
+            self.dialogCloseOnSuccess = self.closeOnSuccess
+            self.dialogCategory = "" // 초기화
+            self.showingOptions = true
+        } else {
+            performExecution(url: url, header: header)
+        }
+    }
+
+    func saveAndRun(url: URL, term: Bool, close: Bool, category: String) {
+        do {
+            let content = try String(contentsOf: url, encoding: .utf8)
+            var lines = content.components(separatedBy: .newlines)
+            
+            // #pqr 태그 조립 (term, cat 포함)
+            var tagParts = ["term=\(term)"]
+            if !category.trimmingCharacters(in: .whitespaces).isEmpty {
+                tagParts.append("cat=\(category)")
+            }
+            let headerTag = "#pqr " + tagParts.joined(separator: "; ")
+            
+            // Shebang이 있으면 그 다음에 삽입, 없으면 제일 위에 삽입
+            if let firstLine = lines.first, firstLine.hasPrefix("#!") {
+                lines.insert(headerTag, at: 1)
+            } else {
+                lines.insert(headerTag, at: 0)
+            }
+            
+            let newContent = lines.joined(separator: "\n")
+            try newContent.write(to: url, atomically: true, encoding: .utf8)
+            
+            // 저장 후 즉시 실행 (이제 헤더가 있으므로 바로 실행됨)
+            executeScript(url: url)
+        } catch {
+            statusMessage = "Error saving header: \(error.localizedDescription)"
+        }
+    }
+
+    func performExecution(url: URL, header: (interpreter: String?, terminalOverride: Bool?, category: String?, hasPqr: Bool)? = nil, manualTerminal: Bool? = nil, manualClose: Bool? = nil) {
         let scriptPath = url.path
         let directoryPath = url.deletingLastPathComponent().path
         
         var finalInterpreter = resolvePath(pythonPath)
-        // 기본적으로는 체크박스 설정을 따름
-        var shouldRunInTerminal = useTerminal
+        var shouldRunInTerminal = manualTerminal ?? useTerminal
+        let shouldCloseOnSuccess = manualClose ?? closeOnSuccess
         
-        // 1. 헤더 스캔 (새 포맷)
-        let header = scanPqrHeader(url: url)
-        if let customPath = header.interpreter, !customPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        // 1. 헤더 혹은 .venv 감지
+        if let h = header, let customPath = h.interpreter, !customPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             let resolvedCustom = resolvePath(customPath)
             if !resolvedCustom.isEmpty {
                 finalInterpreter = resolvedCustom
-                print("Custom interpreter from #qpr: \(finalInterpreter)")
             }
         } else {
-            // 2. .venv 자동 감지 (스크립트 위치 기반)
             let venvCandidates = [
                 url.deletingLastPathComponent().appendingPathComponent(".venv/bin/python").path,
                 url.deletingLastPathComponent().appendingPathComponent(".venv/bin/python3").path
@@ -276,33 +337,28 @@ struct ContentView: View {
             
             if let foundVenv = venvCandidates.first(where: { FileManager.default.fileExists(atPath: $0) }) {
                 finalInterpreter = foundVenv
-                print("Auto-detected venv: \(finalInterpreter)")
                 statusMessage = "Using local .venv: \(finalInterpreter)"
             }
         }
 
-        // term이 명시되면 체크박스 무시하고 강제 적용
-        if let termOverride = header.terminalOverride {
+        // 헤더의 term 우선순위가 가장 높음
+        if let h = header, let termOverride = h.terminalOverride {
             shouldRunInTerminal = termOverride
-            print("Terminal override from header: \(termOverride)")
         }
         
-        // 경로 검증
         if !FileManager.default.fileExists(atPath: finalInterpreter) {
             statusMessage = "Error: Interpreter not found!\nPath: \(finalInterpreter)"
             return
         }
 
-        // 결정된 모드로 실행
         if shouldRunInTerminal {
-            runInTerminal(interpreter: finalInterpreter, scriptPath: scriptPath, directoryPath: directoryPath)
+            runInTerminal(interpreter: finalInterpreter, scriptPath: scriptPath, directoryPath: directoryPath, closeOnSuccess: shouldCloseOnSuccess)
         } else {
-            runInBackground(interpreter: finalInterpreter, scriptPath: scriptPath, directoryPath: directoryPath)
+            runInBackground(interpreter: finalInterpreter, scriptPath: scriptPath, directoryPath: directoryPath, closeOnSuccess: shouldCloseOnSuccess)
         }
     }
 
-    // A. 터미널 실행
-    func runInTerminal(interpreter: String, scriptPath: String, directoryPath: String) {
+    func runInTerminal(interpreter: String, scriptPath: String, directoryPath: String, closeOnSuccess: Bool) {
         let command = "cd '\(directoryPath)' && '\(interpreter)' '\(scriptPath)' && echo Exit status: $? && exit 1"
         statusMessage = "Launching in Terminal...\nUsing: \(interpreter)"
         
@@ -331,8 +387,7 @@ struct ContentView: View {
         }
     }
 
-    // B. 백그라운드 실행
-    func runInBackground(interpreter: String, scriptPath: String, directoryPath: String) {
+    func runInBackground(interpreter: String, scriptPath: String, directoryPath: String, closeOnSuccess: Bool) {
         isRunning = true
         statusMessage = "Running...\nUsing: \(interpreter)"
 
@@ -364,7 +419,7 @@ struct ContentView: View {
                         let displayMsg = output.isEmpty ? "Success (No Output)" : output
                         self.statusMessage = "Success:\n\(displayMsg)"
                         
-                        if self.closeOnSuccess {
+                        if closeOnSuccess {
                              DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                                 NSApplication.shared.terminate(nil)
                             }
@@ -381,5 +436,75 @@ struct ContentView: View {
                 }
             }
         }
+    }
+}
+
+// --- xcode option dialog view ---
+struct OptionDialogView: View {
+    @Binding var useTerminal: Bool
+    @Binding var closeOnSuccess: Bool
+    @Binding var category: String
+    var onRunNow: () -> Void
+    var onSaveAndRun: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 25) {
+            VStack(spacing: 12) {
+                Image(systemName: "questionmark.circle.fill")
+                    .font(.system(size: 44))
+                    .foregroundColor(.accentColor)
+                
+                Text("No #pqr header found")
+                    .font(.title2.bold())
+            }
+            
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Category:")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    TextField("e.g. Utility, Tool, AI", text: $category)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                }
+
+                Divider().padding(.vertical, 5)
+
+                Text("Next time this script will:")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle("Run in Terminal window", isOn: $useTerminal)
+                        .toggleStyle(.checkbox)
+                    
+                    Toggle("Close window after successful execution", isOn: $closeOnSuccess)
+                        .toggleStyle(.checkbox)
+                }
+            }
+            .padding(20)
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.gray.opacity(0.1), lineWidth: 1)
+            )
+
+            HStack(spacing: 15) {
+                Button(action: onRunNow) {
+                    Text("Run Now (⌘D)")
+                        .frame(minWidth: 140, minHeight: 30)
+                }
+                .keyboardShortcut("d", modifiers: .command)
+                
+                Button(action: onSaveAndRun) {
+                    Text("Save & Run (⌘S)")
+                        .frame(minWidth: 140, minHeight: 30)
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut("s", modifiers: .command)
+            }
+        }
+        .padding(30)
+        .frame(width: 420)
     }
 }

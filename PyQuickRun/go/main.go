@@ -41,37 +41,10 @@ func main() {
 
 	pathEntry := widget.NewEntry()
 	pathEntry.SetText(defaultPython)
-	pathEntry.PlaceHolder = "/usr/bin/python3"
+	pathEntry.PlaceHolder = "e.g. /usr/bin/python3 or ~/venv/bin/python"
 
 	pathEntry.OnChanged = func(s string) {
 		prefs.SetString("pythonPath", s)
-	}
-
-	// --- 자동 감지 로직 ---
-	autoDetect := func(dir string) {
-		candidates := []string{
-			filepath.Join(dir, ".venv", "bin", "python"),
-			filepath.Join(dir, ".venv", "bin", "python3"),
-			filepath.Join(dir, "venv", "bin", "python"),
-			filepath.Join(dir, "venv", "bin", "python3"),
-			filepath.Join(dir, "env", "bin", "python"), // Some use 'env'
-		}
-
-		found := ""
-		for _, c := range candidates {
-			if _, err := os.Stat(c); err == nil {
-				found = c
-				break
-			}
-		}
-
-		if found != "" {
-			pathEntry.SetText(found)
-			statusLabel.SetText("Auto-selected: " + found)
-		} else {
-			statusLabel.SetText("No venv found in: " + filepath.Base(dir))
-			dialog.ShowInformation("No Venv Found", "Could not find standard virtualenv (bin/python) in:\n"+dir, w)
-		}
 	}
 
 	browseBtn := widget.NewButtonWithIcon("Binary", theme.FileIcon(), func() {
@@ -86,7 +59,8 @@ func main() {
 	projBtn := widget.NewButtonWithIcon("Project", theme.FolderIcon(), func() {
 		folderDialog := dialog.NewFolderOpen(func(list fyne.ListableURI, err error) {
 			if err == nil && list != nil {
-				autoDetect(list.Path())
+				// autoDetect logic moved here or defined locally
+				autoDetect(list.Path(), pathEntry, statusLabel, w)
 			}
 		}, w)
 		folderDialog.Show()
@@ -97,14 +71,97 @@ func main() {
 	})
 	chkTerminal.SetChecked(prefs.BoolWithFallback("useTerminal", false))
 
-	chkClose := widget.NewCheck("Close window after success", func(b bool) {
+	chkClose := widget.NewCheck("Close window after successful execution", func(b bool) {
 		prefs.SetBool("closeOnSuccess", b)
 	})
 	chkClose.SetChecked(prefs.BoolWithFallback("closeOnSuccess", false))
 
 	// --- 실행 로직 ---
-	runScript := func(scriptPath string) {
-		// Ensure absolute path for consistency
+	var runScript func(string, *PqrHeader, *bool, *bool)
+
+	saveAndRunGo := func(scriptPath string, terminal bool, category string) {
+		file, err := os.ReadFile(scriptPath)
+		if err != nil {
+			return
+		}
+		lines := strings.Split(string(file), "\n")
+		var tagParts []string
+		tagParts = append(tagParts, fmt.Sprintf("term=%v", terminal))
+		if strings.TrimSpace(category) != "" {
+			tagParts = append(tagParts, fmt.Sprintf("cat=%s", category))
+		}
+		headerTag := "#pqr " + strings.Join(tagParts, "; ")
+
+		insertIdx := 0
+		if len(lines) > 0 && strings.HasPrefix(lines[0], "#!") {
+			insertIdx = 1
+		}
+
+		newLines := make([]string, 0, len(lines)+1)
+		newLines = append(newLines, lines[:insertIdx]...)
+		newLines = append(newLines, headerTag)
+		newLines = append(newLines, lines[insertIdx:]...)
+
+		err = os.WriteFile(scriptPath, []byte(strings.Join(newLines, "\n")), 0644)
+		if err != nil {
+			statusLabel.SetText("Error saving header: " + err.Error())
+			return
+		}
+		runScript(scriptPath, nil, nil, nil)
+	}
+
+	showOptionDialog := func(scriptPath string) {
+		catEntry := widget.NewEntry()
+		catEntry.PlaceHolder = "e.g. Utility, Tool, AI"
+
+		termCheck := widget.NewCheck("Run in Terminal window", nil)
+		termCheck.SetChecked(false)
+
+		closeCheck := widget.NewCheck("Close window after successful execution", nil)
+		closeCheck.SetChecked(prefs.BoolWithFallback("closeOnSuccess", false))
+
+		form := container.NewVBox(
+			container.NewCenter(container.NewPadded(widget.NewLabelWithStyle("No #pqr header found", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}))),
+			widget.NewLabel("Category:"),
+			catEntry,
+			widget.NewSeparator(),
+			widget.NewLabel("Next time this script will:"),
+			termCheck,
+			closeCheck,
+			layout.NewSpacer(),
+			widget.NewLabelWithStyle("Shortcuts: Run Now (Ctrl+D) / Save & Run (Ctrl+S)", fyne.TextAlignCenter, fyne.TextStyle{Italic: true}),
+		)
+
+		var dia dialog.Dialog
+
+		runNow := func() {
+			dia.Hide()
+			useT := termCheck.Checked
+			closeW := closeCheck.Checked
+			runScript(scriptPath, nil, &useT, &closeW)
+		}
+
+		saveRun := func() {
+			dia.Hide()
+			saveAndRunGo(scriptPath, termCheck.Checked, catEntry.Text)
+		}
+
+		runBtn := widget.NewButton("Run Now (Ctrl+D)", runNow)
+		saveBtn := widget.NewButton("Save & Run (Ctrl+S)", saveRun)
+		saveBtn.Importance = widget.HighImportance
+
+		dialogContent := container.NewPadded(container.NewVBox(
+			container.NewCenter(widget.NewIcon(theme.HelpIcon())),
+			widget.NewCard("", "", form),
+			container.NewHBox(layout.NewSpacer(), runBtn, saveBtn, layout.NewSpacer()),
+		))
+
+		dia = dialog.NewCustom("Notice", "Cancel", dialogContent, w)
+		dia.Resize(fyne.NewSize(450, 420))
+		dia.Show()
+	}
+
+	runScript = func(scriptPath string, headerOverride *PqrHeader, terminalOverride *bool, closeOverride *bool) {
 		if abs, err := filepath.Abs(scriptPath); err == nil {
 			scriptPath = abs
 		}
@@ -113,41 +170,26 @@ func main() {
 		useTerm := chkTerminal.Checked
 		closeWin := chkClose.Checked
 		scriptDir := filepath.Dir(scriptPath)
-		workDir := scriptDir // Default to script's directory
-
-		// Header Parsing (#pqr or #qpr)
-		foundInterpreter := ""
+		workDir := scriptDir
 		sourceMsg := "Default"
 
-		if file, err := os.Open(scriptPath); err == nil {
-			scanner := bufio.NewScanner(file)
-			for i := 0; i < 20 && scanner.Scan(); i++ {
-				line := strings.TrimSpace(scanner.Text())
-				lowerLine := strings.ToLower(line)
-				if strings.HasPrefix(lowerLine, "#pqr") || strings.HasPrefix(lowerLine, "#qpr") {
-					remainder := strings.TrimSpace(line[4:])
-					parts := strings.Split(remainder, ";")
-					for _, part := range parts {
-						kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
-						if len(kv) == 2 {
-							key := strings.ToLower(strings.TrimSpace(kv[0]))
-							val := strings.TrimSpace(kv[1])
-							if key == "linux" && val != "" {
-								foundInterpreter = val
-								sourceMsg = "#qpr"
-							} else if key == "term" {
-								lowerVal := strings.ToLower(val)
-								if lowerVal == "true" || lowerVal == "1" || lowerVal == "yes" {
-									useTerm = true
-								} else if lowerVal == "false" || lowerVal == "0" || lowerVal == "no" {
-									useTerm = false
-								}
-							}
-						}
-					}
-				}
-			}
-			file.Close()
+		var header PqrHeader
+		if headerOverride != nil {
+			header = *headerOverride
+		} else {
+			header = scanPqrHeaderGo(scriptPath)
+		}
+
+		if !header.HasPqr && terminalOverride == nil {
+			showOptionDialog(scriptPath)
+			return
+		}
+
+		foundInterpreter := ""
+		if header.Interpreter != "" {
+			foundInterpreter = header.Interpreter
+			pythonBin = foundInterpreter
+			sourceMsg = "#qpr"
 		}
 
 		// Search for .venv (Upward)
@@ -160,7 +202,6 @@ func main() {
 			}
 			for _, c := range candidates {
 				if info, err := os.Stat(c); err == nil && info.IsDir() {
-					// Check for python binary in this venv
 					binCandidates := []string{
 						filepath.Join(c, "bin", "python"),
 						filepath.Join(c, "bin", "python3"),
@@ -190,33 +231,37 @@ func main() {
 			tempDir = parent
 		}
 
-		// Determine if we are using a venv (either from #qpr or auto-detected)
-		// We re-verify if the chosen pythonBin is part of a venv to set environment variables
 		venvDir := ""
 		absBin, _ := filepath.Abs(pythonBin)
 		binDir := filepath.Dir(absBin)
 		if _, err := os.Stat(filepath.Join(filepath.Dir(binDir), "pyvenv.cfg")); err == nil {
 			venvDir = filepath.Dir(binDir)
-			// If we are in a venv, we might want the project root as workDir
 			if projectRoot != "" {
 				workDir = projectRoot
 			}
 		}
 
-		// Resolve relative interpreter path in #pqr (if any)
 		if foundInterpreter != "" && !filepath.IsAbs(foundInterpreter) {
 			pythonBin = filepath.Join(scriptDir, foundInterpreter)
+		}
+
+		if header.TermOverride != nil {
+			useTerm = *header.TermOverride
+		}
+		if terminalOverride != nil {
+			useTerm = *terminalOverride
+		}
+		if closeOverride != nil {
+			closeWin = *closeOverride
 		}
 
 		statusLabel.SetText(fmt.Sprintf("Running %s via %s", filepath.Base(scriptPath), sourceMsg))
 
 		if useTerm {
-			// Construct command with environment variables and proper quoting
 			envPrefix := ""
 			if venvDir != "" {
 				envPrefix = fmt.Sprintf("export VIRTUAL_ENV=%s; export PATH=%s:$PATH; ", shellQuote(venvDir), shellQuote(binDir))
 			}
-			// Use absolute path for scriptPath to avoid ambiguity when changing dir
 			cmdStr := fmt.Sprintf("%scd %s && %s %s; echo; echo 'Exit Code: $?'; read -p 'Press Enter to exit...'",
 				envPrefix, shellQuote(workDir), shellQuote(pythonBin), shellQuote(scriptPath))
 
@@ -242,8 +287,20 @@ func main() {
 					break
 				}
 			}
+
 			if !launched {
-				// Fallback to x-terminal-emulator
+				appleScript := fmt.Sprintf(`tell application "Terminal" to do script "%s"`, cmdStr)
+				if _, err := exec.LookPath("osascript"); err == nil {
+					exec.Command("osascript", "-e", appleScript).Start()
+					statusLabel.SetText("Launched in macOS Terminal")
+					launched = true
+					if closeWin {
+						w.Close()
+					}
+				}
+			}
+
+			if !launched {
 				if _, err := exec.LookPath("x-terminal-emulator"); err == nil {
 					exec.Command("x-terminal-emulator", "-e", "bash", "-c", cmdStr).Start()
 					statusLabel.SetText("Launched in x-terminal-emulator")
@@ -259,7 +316,6 @@ func main() {
 		} else {
 			cmd := exec.Command(pythonBin, scriptPath)
 			cmd.Dir = workDir
-			// Inject environment variables for direct execution
 			cmd.Env = os.Environ()
 			if venvDir != "" {
 				cmd.Env = append(cmd.Env, "VIRTUAL_ENV="+venvDir)
@@ -277,7 +333,6 @@ func main() {
 			}
 
 			output, err := cmd.CombinedOutput()
-
 			if err == nil {
 				statusLabel.SetText("Success (Exit Code 0)")
 				if closeWin {
@@ -297,56 +352,50 @@ func main() {
 	w.SetOnDropped(func(pos fyne.Position, uris []fyne.URI) {
 		if len(uris) > 0 {
 			path := uris[0].Path()
-			// 폴더인지 확인
 			if fi, err := os.Stat(path); err == nil && fi.IsDir() {
-				autoDetect(path)
+				autoDetect(path, pathEntry, statusLabel, w)
 			} else if strings.HasSuffix(strings.ToLower(path), ".py") {
-				runScript(path)
+				runScript(path, nil, nil, nil)
 			} else {
 				statusLabel.SetText("Error: Only .py files or Project folders supported")
 			}
 		}
 	})
 
-	dropIcon := widget.NewIcon(theme.UploadIcon())
-	dropText := widget.NewLabel("Drag & Drop .py file here\n(or Drop anywhere in window)")
-	dropText.Alignment = fyne.TextAlignCenter
+	dropIcon := widget.NewIcon(theme.DocumentIcon())
+	dropText := widget.NewLabelWithStyle("Drag & Drop .py file here", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	dropSubText := widget.NewLabelWithStyle("or drop anywhere in window", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
 
-	dropZone := container.NewVBox(
+	dropContent := container.NewPadded(container.NewVBox(
 		layout.NewSpacer(),
-		dropIcon,
+		container.NewCenter(dropIcon),
 		dropText,
+		dropSubText,
 		layout.NewSpacer(),
-	)
-
-	cardFrame := container.NewPadded(container.NewPadded(dropZone))
+	))
+	dropCard := widget.NewCard("", "", dropContent)
 
 	// --- 레이아웃 조립 ---
-	content := container.NewVBox(
-		widget.NewLabelWithStyle(AppName, fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
+	mainContent := container.NewVBox(
+		container.NewCenter(widget.NewLabelWithStyle(AppName, fyne.TextAlignCenter, fyne.TextStyle{Bold: true})),
 		widget.NewSeparator(),
-		widget.NewLabel("Interpreter Path:"),
-		container.NewBorder(nil, nil, nil, container.NewHBox(browseBtn, projBtn), pathEntry),
-		chkTerminal,
-		chkClose,
-		layout.NewSpacer(),
-		widget.NewCard("", "", cardFrame),
+		container.NewPadded(container.NewVBox(
+			widget.NewLabel("Interpreter Path (uv or python):"),
+			container.NewBorder(nil, nil, nil, container.NewHBox(browseBtn, projBtn), pathEntry),
+			container.NewVBox(chkTerminal, chkClose),
+		)),
+		container.NewPadded(dropCard),
 		layout.NewSpacer(),
 		widget.NewSeparator(),
 		statusLabel,
-		widget.NewLabelWithStyle("© 2026 DINKIssTyle", fyne.TextAlignTrailing, fyne.TextStyle{Italic: true}),
+		container.NewHBox(layout.NewSpacer(), widget.NewLabelWithStyle("© 2026 DINKIssTyle", fyne.TextAlignTrailing, fyne.TextStyle{Italic: true})),
 	)
 
-	w.SetContent(container.NewPadded(content))
+	w.SetContent(container.NewPadded(mainContent))
 
-	// ==========================================
-	// [추가된 핵심 로직] 더블 클릭(인자값) 처리
-	// ==========================================
 	if len(os.Args) > 1 {
 		arg := os.Args[1]
 		targetPath := ""
-
-		// URI(file://) 형태인지 확인
 		if strings.HasPrefix(arg, "file://") {
 			if u, err := url.Parse(arg); err == nil {
 				targetPath = u.Path
@@ -356,19 +405,14 @@ func main() {
 		}
 
 		if targetPath != "" {
-			// 실제 절대 경로로 변환
 			if abs, err := filepath.Abs(targetPath); err == nil {
 				targetPath = abs
 			}
-
-			// 파일이 실제 존재하고 .py 인지 확인
 			if info, err := os.Stat(targetPath); err == nil && !info.IsDir() {
 				if strings.HasSuffix(strings.ToLower(targetPath), ".py") {
-					// UI가 완전히 뜬 뒤 실행하기 위해 고루틴(별도 쓰레드) 사용
 					go func() {
-						// 0.2초 정도 대기 (UI 렌더링 확보)
 						time.Sleep(200 * time.Millisecond)
-						runScript(targetPath)
+						runScript(targetPath, nil, nil, nil)
 					}()
 				}
 			}
@@ -378,7 +422,80 @@ func main() {
 	w.ShowAndRun()
 }
 
+// autoDetect logic
+func autoDetect(dir string, pathEntry *widget.Entry, statusLabel *widget.Label, w fyne.Window) {
+	candidates := []string{
+		filepath.Join(dir, ".venv", "bin", "python"),
+		filepath.Join(dir, ".venv", "bin", "python3"),
+		filepath.Join(dir, "venv", "bin", "python"),
+		filepath.Join(dir, "venv", "bin", "python3"),
+		filepath.Join(dir, "env", "bin", "python"),
+	}
+
+	found := ""
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			found = c
+			break
+		}
+	}
+
+	if found != "" {
+		pathEntry.SetText(found)
+		statusLabel.SetText("Auto-selected: " + found)
+	} else {
+		statusLabel.SetText("No venv found in: " + filepath.Base(dir))
+		dialog.ShowInformation("No Venv Found", "Could not find standard virtualenv (bin/python) in:\n"+dir, w)
+	}
+}
+
 // shellQuote returns a shell-escaped version of the string.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+type PqrHeader struct {
+	Interpreter  string
+	TermOverride *bool
+	Category     string
+	HasPqr       bool
+}
+
+func scanPqrHeaderGo(scriptPath string) PqrHeader {
+	var header PqrHeader
+	file, err := os.Open(scriptPath)
+	if err != nil {
+		return header
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for i := 0; i < 20 && scanner.Scan(); i++ {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(strings.ToLower(line), "#pqr") {
+			header.HasPqr = true
+			remainder := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(line), "#pqr"))
+			parts := strings.Split(remainder, ";")
+			for _, part := range parts {
+				kv := strings.Split(strings.TrimSpace(part), "=")
+				if len(kv) == 2 {
+					key := strings.TrimSpace(kv[0])
+					val := strings.TrimSpace(kv[1])
+					if key == "linux" && val != "" {
+						header.Interpreter = val
+					} else if key == "cat" {
+						header.Category = val
+					} else if key == "term" {
+						b := false
+						if val == "true" || val == "1" || val == "yes" {
+							b = true
+						}
+						header.TermOverride = &b
+					}
+				}
+			}
+			return header
+		}
+	}
+	return header
 }

@@ -1,9 +1,10 @@
-﻿// Created by DINKIssTyle on 2026. Copyright (C) 2026 DINKI'ssTyle. All rights reserved.
+// Created by DINKIssTyle on 2026. Copyright (C) 2026 DINKI'ssTyle. All rights reserved.
 
 #nullable disable
 
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -147,7 +148,7 @@ namespace PyQuickRun
             }
         }
 
-        private (string path, bool forceTerminal) ScanPqrHeader(string filePath)
+        private (string path, bool? forceTerminal, string category, bool hasPqr) ScanPqrHeader(string filePath)
         {
             try
             {
@@ -157,13 +158,12 @@ namespace PyQuickRun
                     string trimmed = line.Trim();
                     if (trimmed.StartsWith("#pqr", StringComparison.OrdinalIgnoreCase))
                     {
-                        // Remove #pqr and parse the rest
                         string argsLine = trimmed.Substring(4).Trim();
-                        // Split by semicolon
                         var parts = argsLine.Split(';');
                         
                         string foundPath = null;
-                        bool forceTerminal = false;
+                        bool? forceTerminal = null;
+                        string category = null;
 
                         foreach (var part in parts)
                         {
@@ -173,41 +173,50 @@ namespace PyQuickRun
                                 string key = kv[0].Trim().ToLower();
                                 string value = kv[1].Trim();
 
-                                if (key == "win")
-                                {
-                                    foundPath = value;
-                                }
+                                if (key == "win") foundPath = value;
+                                else if (key == "cat") category = value;
                                 else if (key == "term")
                                 {
-                                    bool.TryParse(value, out forceTerminal);
+                                    if (bool.TryParse(value, out bool b)) forceTerminal = b;
                                 }
                             }
                         }
-
-                        // If we found at least a path or explicit terminal setting, return it.
-                        // However, based on requirements, if #pqr is present, we might want to return what we found.
-                        // The previous logic returned (remainder, forceTerminal) where remainder was the path.
-                        // Now we return (foundPath, forceTerminal).
-                        
-                        if (foundPath != null || forceTerminal)
-                        {
-                             return (foundPath, forceTerminal);
-                        }
+                        return (foundPath, forceTerminal, category, true);
                     }
                 }
             }
             catch (Exception ex) { Debug.WriteLine(ex.Message); }
-            return (null, false);
+            return (null, null, null, false);
         }
 
-        private async void ExecuteScript(string scriptPath)
+        private async void ExecuteScript(string scriptPath, bool? manualTerminal = null, bool? manualClose = null)
         {
             SaveSettings();
             string interpreter = TxtPythonPath.Text;
-            bool useTerminal = ChkTerminal.IsChecked ?? false;
+            bool useTerminal = manualTerminal ?? ChkTerminal.IsChecked ?? false;
+            bool closeOnSuccess = manualClose ?? ChkCloseOnSuccess.IsChecked ?? false;
             string workingDir = Path.GetDirectoryName(scriptPath);
 
             var pqr = ScanPqrHeader(scriptPath);
+
+            if (!pqr.hasPqr && manualTerminal == null)
+            {
+                // #pqr 헤더가 없는 경우 옵션창 표시
+                var diag = new OptionWindow(ChkCloseOnSuccess.IsChecked ?? false) { Owner = this };
+                if (diag.ShowDialog() == true)
+                {
+                    if (diag.SaveRequested)
+                    {
+                        SaveHeaderAndRun(scriptPath, diag.UseTerminal, diag.Category, diag.CloseOnSuccess);
+                    }
+                    else if (diag.RunRequested)
+                    {
+                        ExecuteScript(scriptPath, diag.UseTerminal, diag.CloseOnSuccess);
+                    }
+                }
+                return;
+            }
+
             if (!string.IsNullOrEmpty(pqr.path))
             {
                 interpreter = pqr.path;
@@ -227,13 +236,44 @@ namespace PyQuickRun
                 }
             }
 
-            if (pqr.forceTerminal) useTerminal = true;
+            if (pqr.forceTerminal != null) useTerminal = pqr.forceTerminal.Value;
 
-            if (useTerminal) RunInTerminal(interpreter, scriptPath, workingDir);
-            else await RunInBackground(interpreter, scriptPath, workingDir);
+            if (useTerminal) RunInTerminal(interpreter, scriptPath, workingDir, closeOnSuccess);
+            else await RunInBackground(interpreter, scriptPath, workingDir, closeOnSuccess);
         }
 
-        private void RunInTerminal(string interpreter, string scriptPath, string workingDir)
+        private void SaveHeaderAndRun(string filePath, bool term, string category, bool closeOnSuccess)
+        {
+            try
+            {
+                var contentLines = File.ReadAllLines(filePath).ToList();
+                List<string> tagParts = new List<string> { $"term={term.ToString().ToLower()}" };
+                if (!string.IsNullOrWhiteSpace(category))
+                {
+                    tagParts.Add($"cat={category}");
+                }
+                string headerTag = "#pqr " + string.Join("; ", tagParts);
+
+                // Shebang 체크
+                int insertIdx = 0;
+                if (contentLines.Count > 0 && contentLines[0].StartsWith("#!"))
+                {
+                    insertIdx = 1;
+                }
+                contentLines.Insert(insertIdx, headerTag);
+
+                File.WriteAllLines(filePath, contentLines, Encoding.UTF8);
+
+                // 재시작 (이제 헤더가 있으므로 바로 실행됨)
+                ExecuteScript(filePath, term, closeOnSuccess);
+            }
+            catch (Exception ex)
+            {
+                SetStatus($"Error saving header: {ex.Message}", true);
+            }
+        }
+
+        private void RunInTerminal(string interpreter, string scriptPath, string workingDir, bool closeOnSuccess)
         {
             try
             {
@@ -244,12 +284,12 @@ namespace PyQuickRun
                 Process.Start(psi);
 
                 SetStatus("Launched in CMD successfully.", false);
-                if (ChkCloseOnSuccess.IsChecked == true) Application.Current.Shutdown();
+                if (closeOnSuccess) Application.Current.Shutdown();
             }
             catch (Exception ex) { SetStatus($"Error: {ex.Message}", true); }
         }
 
-        private async Task RunInBackground(string interpreter, string scriptPath, string workingDir)
+        private async Task RunInBackground(string interpreter, string scriptPath, string workingDir, bool closeOnSuccess)
         {
             LoadingOverlay.Visibility = Visibility.Visible;
             SetStatus($"Running...\nUsing: {interpreter}", false);
@@ -292,7 +332,7 @@ namespace PyQuickRun
                 {
                     string msg = string.IsNullOrWhiteSpace(result.Output) ? "Success (No Output)" : result.Output;
                     SetStatus($"Success:\n{msg}", false);
-                    if (ChkCloseOnSuccess.IsChecked == true)
+                    if (closeOnSuccess)
                     {
                         await Task.Delay(1000);
                         Application.Current.Shutdown();
@@ -310,6 +350,7 @@ namespace PyQuickRun
                 SetStatus($"Error: {ex.Message}", true);
             }
         }
+
 
         private void SetStatus(string message, bool isError)
         {
