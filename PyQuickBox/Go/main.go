@@ -1,3 +1,5 @@
+// Created by DINKIssTyle on 2026. Copyright (C) 2026 DINKI'ssTyle. All rights reserved.
+
 package main
 
 import (
@@ -52,7 +54,7 @@ const (
 const (
 	AppName      = "PyQuickBox"
 	AppVersion   = "1.0.0"
-	AppCopyright = "© 2025 DINKI'ssTyle"
+	AppCopyright = "© 2026 DINKI'ssTyle"
 )
 
 // --- 메인 구조체 ---
@@ -649,7 +651,26 @@ func (l *LauncherApp) createTerminalCommand(python, scriptPath string) *exec.Cmd
 	case "windows":
 		return exec.Command("cmd", "/C", "start", "cmd", "/k", python, scriptPath)
 	case "linux":
-		return exec.Command("x-terminal-emulator", "-e", fmt.Sprintf("%s %s", python, scriptPath))
+		cmdStr := fmt.Sprintf("%s %s; echo; echo 'Exit Code: $?'; read -p 'Press Enter to exit...'",
+			shellQuote(python), shellQuote(scriptPath))
+
+		terminals := [][]string{
+			{"ptyxis", "--", "bash", "-c"},
+			{"kgx", "--", "bash", "-c"},
+			{"gnome-terminal", "--", "bash", "-c"},
+			{"konsole", "-e", "bash", "-c"},
+			{"xfce4-terminal", "-x", "bash", "-c"},
+			{"xterm", "-e", "bash", "-c"},
+		}
+
+		for _, term := range terminals {
+			if _, err := exec.LookPath(term[0]); err == nil {
+				args := append(term[1:], cmdStr)
+				return exec.Command(term[0], args...)
+			}
+		}
+		// Fallback
+		return exec.Command("x-terminal-emulator", "-e", fmt.Sprintf("bash -c %s", shellQuote(cmdStr)))
 	default:
 		return exec.Command(python, scriptPath)
 	}
@@ -1248,4 +1269,9 @@ func (w *ScriptWidget) TappedSecondary(e *fyne.PointEvent) {
 		fyne.NewMenuItem("Properties", func() { w.app.showPropertiesDialog(w.item) }),
 	)
 	widget.ShowPopUpMenuAtPosition(menu, w.app.Window.Canvas(), e.AbsolutePosition)
+}
+
+// shellQuote returns a shell-escaped version of the string.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }

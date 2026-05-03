@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"net/url"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
@@ -102,32 +104,42 @@ func main() {
 
 	// --- 실행 로직 ---
 	runScript := func(scriptPath string) {
+		// Ensure absolute path for consistency
+		if abs, err := filepath.Abs(scriptPath); err == nil {
+			scriptPath = abs
+		}
+
 		pythonBin := pathEntry.Text
 		useTerm := chkTerminal.Checked
 		closeWin := chkClose.Checked
-		workDir := filepath.Dir(scriptPath)
+		scriptDir := filepath.Dir(scriptPath)
+		workDir := scriptDir // Default to script's directory
 
-		// 헤더 파싱 및 .venv 감지
+		// Header Parsing (#pqr or #qpr)
 		foundInterpreter := ""
+		sourceMsg := "Default"
+
 		if file, err := os.Open(scriptPath); err == nil {
 			scanner := bufio.NewScanner(file)
 			for i := 0; i < 20 && scanner.Scan(); i++ {
 				line := strings.TrimSpace(scanner.Text())
-				if strings.HasPrefix(strings.ToLower(line), "#pqr") {
-					// Parse key=value pairs
-					remainder := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(line), "#pqr"))
+				lowerLine := strings.ToLower(line)
+				if strings.HasPrefix(lowerLine, "#pqr") || strings.HasPrefix(lowerLine, "#qpr") {
+					remainder := strings.TrimSpace(line[4:])
 					parts := strings.Split(remainder, ";")
 					for _, part := range parts {
-						kv := strings.Split(strings.TrimSpace(part), "=")
+						kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
 						if len(kv) == 2 {
-							key := strings.TrimSpace(kv[0])
+							key := strings.ToLower(strings.TrimSpace(kv[0]))
 							val := strings.TrimSpace(kv[1])
 							if key == "linux" && val != "" {
 								foundInterpreter = val
+								sourceMsg = "#qpr"
 							} else if key == "term" {
-								if val == "true" || val == "1" || val == "yes" {
+								lowerVal := strings.ToLower(val)
+								if lowerVal == "true" || lowerVal == "1" || lowerVal == "yes" {
 									useTerm = true
-								} else if val == "false" || val == "0" || val == "no" {
+								} else if lowerVal == "false" || lowerVal == "0" || lowerVal == "no" {
 									useTerm = false
 								}
 							}
@@ -138,29 +150,79 @@ func main() {
 			file.Close()
 		}
 
-		if foundInterpreter != "" {
-			pythonBin = foundInterpreter
-		} else {
-			// .venv 자동 감지
-			venvCandidates := []string{
-				filepath.Join(workDir, ".venv", "bin", "python"),
-				filepath.Join(workDir, ".venv", "bin", "python3"),
+		// Search for .venv (Upward)
+		projectRoot := ""
+		tempDir := scriptDir
+		for i := 0; i < 5; i++ {
+			candidates := []string{
+				filepath.Join(tempDir, ".venv"),
+				filepath.Join(tempDir, "venv"),
 			}
-			for _, c := range venvCandidates {
-				if _, err := os.Stat(c); err == nil {
-					pythonBin = c
-					statusLabel.SetText("Using local .venv: " + pythonBin)
+			for _, c := range candidates {
+				if info, err := os.Stat(c); err == nil && info.IsDir() {
+					// Check for python binary in this venv
+					binCandidates := []string{
+						filepath.Join(c, "bin", "python"),
+						filepath.Join(c, "bin", "python3"),
+					}
+					for _, bc := range binCandidates {
+						if binfo, berr := os.Stat(bc); berr == nil && !binfo.IsDir() {
+							if foundInterpreter == "" {
+								pythonBin = bc
+								sourceMsg = "Auto(.venv)"
+							}
+							projectRoot = tempDir
+							break
+						}
+					}
+				}
+				if projectRoot != "" {
 					break
 				}
 			}
+			if projectRoot != "" {
+				break
+			}
+			parent := filepath.Dir(tempDir)
+			if parent == tempDir {
+				break
+			}
+			tempDir = parent
 		}
 
-		statusLabel.SetText("Running: " + filepath.Base(scriptPath))
+		// Determine if we are using a venv (either from #qpr or auto-detected)
+		// We re-verify if the chosen pythonBin is part of a venv to set environment variables
+		venvDir := ""
+		absBin, _ := filepath.Abs(pythonBin)
+		binDir := filepath.Dir(absBin)
+		if _, err := os.Stat(filepath.Join(filepath.Dir(binDir), "pyvenv.cfg")); err == nil {
+			venvDir = filepath.Dir(binDir)
+			// If we are in a venv, we might want the project root as workDir
+			if projectRoot != "" {
+				workDir = projectRoot
+			}
+		}
+
+		// Resolve relative interpreter path in #pqr (if any)
+		if foundInterpreter != "" && !filepath.IsAbs(foundInterpreter) {
+			pythonBin = filepath.Join(scriptDir, foundInterpreter)
+		}
+
+		statusLabel.SetText(fmt.Sprintf("Running %s via %s", filepath.Base(scriptPath), sourceMsg))
 
 		if useTerm {
-			cmdStr := fmt.Sprintf("cd '%s' && '%s' '%s'; echo; echo 'Exit Code: $?'; read -p 'Press Enter to exit...'", workDir, pythonBin, scriptPath)
+			// Construct command with environment variables and proper quoting
+			envPrefix := ""
+			if venvDir != "" {
+				envPrefix = fmt.Sprintf("export VIRTUAL_ENV=%s; export PATH=%s:$PATH; ", shellQuote(venvDir), shellQuote(binDir))
+			}
+			// Use absolute path for scriptPath to avoid ambiguity when changing dir
+			cmdStr := fmt.Sprintf("%scd %s && %s %s; echo; echo 'Exit Code: $?'; read -p 'Press Enter to exit...'",
+				envPrefix, shellQuote(workDir), shellQuote(pythonBin), shellQuote(scriptPath))
 
 			terminals := [][]string{
+				{"ptyxis", "--", "bash", "-c"},
+				{"kgx", "--", "bash", "-c"},
 				{"gnome-terminal", "--", "bash", "-c"},
 				{"konsole", "-e", "bash", "-c"},
 				{"xfce4-terminal", "-x", "bash", "-c"},
@@ -181,18 +243,44 @@ func main() {
 				}
 			}
 			if !launched {
-				statusLabel.SetText("Error: No supported terminal found.")
+				// Fallback to x-terminal-emulator
+				if _, err := exec.LookPath("x-terminal-emulator"); err == nil {
+					exec.Command("x-terminal-emulator", "-e", "bash", "-c", cmdStr).Start()
+					statusLabel.SetText("Launched in x-terminal-emulator")
+					launched = true
+					if closeWin {
+						w.Close()
+					}
+				} else {
+					statusLabel.SetText("Error: No supported terminal found.")
+				}
 			}
 
 		} else {
 			cmd := exec.Command(pythonBin, scriptPath)
 			cmd.Dir = workDir
+			// Inject environment variables for direct execution
+			cmd.Env = os.Environ()
+			if venvDir != "" {
+				cmd.Env = append(cmd.Env, "VIRTUAL_ENV="+venvDir)
+				pathFound := false
+				for i, env := range cmd.Env {
+					if strings.HasPrefix(strings.ToUpper(env), "PATH=") {
+						cmd.Env[i] = "PATH=" + binDir + ":" + env[5:]
+						pathFound = true
+						break
+					}
+				}
+				if !pathFound {
+					cmd.Env = append(cmd.Env, "PATH="+binDir+":"+os.Getenv("PATH"))
+				}
+			}
+
 			output, err := cmd.CombinedOutput()
 
 			if err == nil {
 				statusLabel.SetText("Success (Exit Code 0)")
 				if closeWin {
-					// 성공 시 1초 뒤 종료
 					go func() {
 						time.Sleep(time.Second)
 						w.Close()
@@ -246,7 +334,7 @@ func main() {
 		layout.NewSpacer(),
 		widget.NewSeparator(),
 		statusLabel,
-		widget.NewLabelWithStyle("© 2025 DINKIssTyle", fyne.TextAlignTrailing, fyne.TextStyle{Italic: true}),
+		widget.NewLabelWithStyle("© 2026 DINKIssTyle", fyne.TextAlignTrailing, fyne.TextStyle{Italic: true}),
 	)
 
 	w.SetContent(container.NewPadded(content))
@@ -255,19 +343,42 @@ func main() {
 	// [추가된 핵심 로직] 더블 클릭(인자값) 처리
 	// ==========================================
 	if len(os.Args) > 1 {
-		argPath := os.Args[1]
-		// 파일이 실제 존재하고 .py 인지 확인
-		if _, err := os.Stat(argPath); err == nil {
-			if strings.HasSuffix(strings.ToLower(argPath), ".py") {
-				// UI가 완전히 뜬 뒤 실행하기 위해 고루틴(별도 쓰레드) 사용
-				go func() {
-					// 0.2초 정도 대기 (UI 렌더링 확보)
-					time.Sleep(200 * time.Millisecond)
-					runScript(argPath)
-				}()
+		arg := os.Args[1]
+		targetPath := ""
+
+		// URI(file://) 형태인지 확인
+		if strings.HasPrefix(arg, "file://") {
+			if u, err := url.Parse(arg); err == nil {
+				targetPath = u.Path
+			}
+		} else {
+			targetPath = arg
+		}
+
+		if targetPath != "" {
+			// 실제 절대 경로로 변환
+			if abs, err := filepath.Abs(targetPath); err == nil {
+				targetPath = abs
+			}
+
+			// 파일이 실제 존재하고 .py 인지 확인
+			if info, err := os.Stat(targetPath); err == nil && !info.IsDir() {
+				if strings.HasSuffix(strings.ToLower(targetPath), ".py") {
+					// UI가 완전히 뜬 뒤 실행하기 위해 고루틴(별도 쓰레드) 사용
+					go func() {
+						// 0.2초 정도 대기 (UI 렌더링 확보)
+						time.Sleep(200 * time.Millisecond)
+						runScript(targetPath)
+					}()
+				}
 			}
 		}
 	}
 
 	w.ShowAndRun()
+}
+
+// shellQuote returns a shell-escaped version of the string.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
